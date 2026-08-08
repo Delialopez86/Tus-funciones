@@ -222,6 +222,45 @@
   }
   #toast.show{opacity:1}
 
+  /* ---------- SELECTOR DE RANGO ---------- */
+  .range-nav{display:flex; align-items:center; gap:6px}
+  .range-nav select{padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:.85rem}
+  .range-nav .nav-btn{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background:#fff;
+    cursor:pointer; font-size:.9rem; display:inline-flex; align-items:center; justify-content:center;
+  }
+  .range-nav .nav-btn:hover{background:#f0efe8}
+  .range-nav .btn-hoy{padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:.8rem; font-weight:600; cursor:pointer}
+
+  /* ---------- BLOQUEO / DESBLOQUEO DE FECHA ---------- */
+  table.matriz thead th.daycol{position:relative}
+  .unlock-toggle{
+    display:block; margin:4px auto 0; width:18px; height:18px; border-radius:5px; border:none;
+    background:transparent; cursor:pointer; font-size:.75rem; line-height:1; opacity:.55;
+  }
+  .unlock-toggle:hover{opacity:1}
+  .unlock-toggle.activo{opacity:1}
+  th.daycol.desbloqueada{background:#faf1e0}
+
+  /* ---------- VENCIMIENTOS ---------- */
+  .venc-alerts{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:18px}
+  .venc-alert-card{border-radius:12px; padding:14px 18px; box-shadow:var(--shadow); background:var(--card)}
+  .venc-alert-card .n{font-size:1.6rem; font-weight:700}
+  .venc-alert-card .lbl{font-size:.76rem; color:#6b6a63; font-weight:600; text-transform:uppercase; letter-spacing:.03em; margin-top:2px}
+  .venc-alert-card.vencidos{border-left:4px solid var(--red)}
+  .venc-alert-card.proximos{border-left:4px solid var(--amber)}
+  .venc-alert-card.sinfecha{border-left:4px solid var(--gray)}
+  .venc-alert-card.completados{border-left:4px solid var(--accent)}
+
+  table.venc-table{width:100%; border-collapse:collapse; background:var(--card); box-shadow:var(--shadow); border-radius:12px; overflow:hidden}
+  table.venc-table th, table.venc-table td{padding:11px 14px; text-align:left; border-bottom:1px solid var(--line); font-size:.86rem; vertical-align:middle}
+  table.venc-table th{background:#efece2; font-size:.71rem; text-transform:uppercase; color:#6b6a63; letter-spacing:.03em}
+  .cat-chip{background:#eeece4; color:#6b6a63; padding:3px 9px; border-radius:100px; font-size:.72rem; font-weight:700; white-space:nowrap}
+  .venc-fecha.vencido{color:var(--red); font-weight:700}
+  .venc-fecha.proximo{color:var(--amber); font-weight:700}
+  .venc-fecha.sinfecha{color:var(--gray); font-style:italic}
+  .venc-fecha.completado{color:#8b8a84; text-decoration:line-through}
+
   @media (max-width:640px){
     main{padding:14px}
     .modal{padding:20px}
@@ -263,6 +302,7 @@
     <button class="tab-btn active" data-tab="matriz" onclick="cambiarTab('matriz')">📅 Matriz</button>
     <button class="tab-btn" data-tab="kpi" onclick="cambiarTab('kpi')">📊 KPIs</button>
     <button class="tab-btn" data-tab="bitacora" onclick="cambiarTab('bitacora')">📝 Bitácora</button>
+    <button class="tab-btn" data-tab="vencimientos" onclick="cambiarTab('vencimientos')">🗓️ Vencimientos</button>
     <button class="tab-btn hidden" data-tab="usuarios" id="tabBtnUsuarios" onclick="cambiarTab('usuarios')">👥 Usuarios</button>
   </nav>
 
@@ -275,6 +315,19 @@
           <div class="sub" id="rangeLabel"></div>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="range-nav">
+            <button class="nav-btn" id="btnRangoPrev" title="Período anterior">‹</button>
+            <select id="rangoTipo">
+              <option value="semana">Semanal</option>
+              <option value="quincena">Quincenal</option>
+              <option value="mes">Mensual</option>
+              <option value="trimestre">Trimestral</option>
+              <option value="semestre">Semestral</option>
+              <option value="anio">Anual</option>
+            </select>
+            <button class="nav-btn" id="btnRangoNext" title="Período siguiente">›</button>
+            <button class="btn-hoy" id="btnRangoHoy">Hoy</button>
+          </div>
           <select id="deptFilter" class="hidden"></select>
           <button class="btn btn-primary" id="btnNuevaTarea">+ Nueva tarea</button>
         </div>
@@ -320,7 +373,9 @@
         <span><i style="background:var(--red); box-shadow:0 0 0 2px rgba(161,61,61,.25) inset"></i> ⚠️ Vencida</span>
         <span><i style="background:var(--amber); border-radius:50%; width:9px; height:9px;"></i> Pendiente de validar</span>
         <span><i style="background:#e5e3da; border:1px solid var(--line)"></i> Fuera de rango / bloqueado</span>
+        <span>🔒/🔓 junto a un día = Gerencia puede bloquear o desbloquear la edición de esa fecha</span>
       </div>
+      <div class="sub" style="margin-top:4px">Días laborables: lunes a sábado. Solo se edita el estado del día de hoy, salvo que Gerencia desbloquee una fecha puntual.</div>
     </div>
 
     <!-- -------- TAB: KPI + RESUMEN EJECUTIVO -------- -->
@@ -372,6 +427,46 @@
         <button class="btn btn-primary" id="btnAddBitacora">+ Agregar anotación</button>
       </div>
       <div id="bitacoraList"></div>
+    </div>
+
+    <!-- -------- TAB: VENCIMIENTOS (calendario por departamento) -------- -->
+    <div id="tabVencimientos" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Calendario de vencimientos</h2>
+          <div class="sub" id="vencSubLabel">Cobranzas, pagos, impuestos, licencias y contratos de tu departamento</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="vencDeptFilter" class="hidden"></select>
+          <button class="btn btn-primary hidden" id="btnNuevoVencimiento">+ Nuevo vencimiento</button>
+        </div>
+      </div>
+
+      <div class="venc-alerts">
+        <div class="venc-alert-card vencidos"><div class="n" id="vencCountVencidos">0</div><div class="lbl">⚠️ Vencidos</div></div>
+        <div class="venc-alert-card proximos"><div class="n" id="vencCountProximos">0</div><div class="lbl">🔔 Próximos 7 días</div></div>
+        <div class="venc-alert-card sinfecha"><div class="n" id="vencCountSinFecha">0</div><div class="lbl">📌 Sin fecha definida</div></div>
+        <div class="venc-alert-card completados"><div class="n" id="vencCountCompletados">0</div><div class="lbl">✅ Completados (30 días)</div></div>
+      </div>
+
+      <div class="filter-bar">
+        <select id="vFCategoria">
+          <option value="">Toda categoría</option>
+          <option value="Cobranza">Cobranza</option>
+          <option value="Pago de servicio">Pago de servicio</option>
+          <option value="Impuesto">Impuesto</option>
+          <option value="Licencia">Licencia</option>
+          <option value="Contrato">Contrato</option>
+          <option value="Otro">Otro</option>
+        </select>
+        <select id="vFEstado">
+          <option value="">Todo estado</option>
+          <option value="PENDIENTE">Pendientes</option>
+          <option value="COMPLETADO">Completados</option>
+        </select>
+      </div>
+
+      <div id="vencimientosContent"></div>
     </div>
 
     <!-- -------- TAB: USUARIOS (solo nivel 1 / admin) -------- -->
@@ -523,6 +618,64 @@
   </div>
 </div>
 
+<!-- ============ MODAL: nuevo/editar vencimiento ============ -->
+<div class="overlay hidden" id="vencModalOverlay">
+  <div class="modal">
+    <h3 id="vencModalTitle">Nuevo vencimiento</h3>
+    <input type="hidden" id="vencId">
+    <div class="field">
+      <label>Título</label>
+      <input type="text" id="vencTitulo" placeholder="Ej: Presentación IVA mensual">
+    </div>
+    <div class="field">
+      <label>Categoría</label>
+      <select id="vencCategoria">
+        <option value="Cobranza">💰 Cobranza</option>
+        <option value="Pago de servicio">🧾 Pago de servicio</option>
+        <option value="Impuesto">🏛️ Impuesto</option>
+        <option value="Licencia">📄 Licencia</option>
+        <option value="Contrato">🤝 Contrato</option>
+        <option value="Otro">📌 Otro</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Departamento</label>
+      <select id="vencDepartamento"></select>
+    </div>
+    <div class="field">
+      <label>Fecha tope (dejá vacío si todavía no está definida)</label>
+      <input type="date" id="vencFecha">
+    </div>
+    <div class="field">
+      <label>Recurrencia</label>
+      <select id="vencRecurrencia">
+        <option value="unica">📌 Única vez</option>
+        <option value="mensual">📅 Mensual</option>
+        <option value="trimestral">🗓️ Trimestral</option>
+        <option value="semestral">🗓️ Semestral</option>
+        <option value="anual">🗓️ Anual</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Monto (opcional)</label>
+      <input type="number" id="vencMonto" step="0.01" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label>Responsable (opcional)</label>
+      <select id="vencResponsable"><option value="">— Sin asignar —</option></select>
+    </div>
+    <div class="field">
+      <label>Notas (opcional)</label>
+      <textarea id="vencNotas" rows="2"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelVenc">Cancelar</button>
+      <button class="btn btn-danger hidden" id="btnDeleteVenc">Borrar</button>
+      <button class="btn btn-primary" id="btnSaveVenc">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* =========================================================
    CONFIGURACIÓN — completar con los datos de tu proyecto Supabase
@@ -537,13 +690,17 @@ const ESTADOS = ['REALIZADO','EN_PROCESO','PENDIENTE','NO_APLICA'];
 const ESTADO_ICONO = { REALIZADO:'✅', EN_PROCESO:'🔄', PENDIENTE:'⏳', NO_APLICA:'➖' };
 
 let currentUser = null;   // fila de la tabla "usuarios"
-let currentTab = 'matriz'; // matriz | kpi | usuarios
+let currentTab = 'matriz'; // matriz | kpi | bitacora | vencimientos | usuarios
 let departamentos = [];
 let usuarios = [];        // para selects de "asignado a"
 let tareas = [];
 let instancias = {};      // key `${tarea_id}_${fecha}` -> instancia
-let last7 = [];           // array de fechas (YYYY-MM-DD), más antigua primero
+let diasRango = [];       // array de fechas laborables (lun-sáb) del período visible, más antigua primero
 let selectedDept = null;  // filtro de departamento para nivel 1/admin
+let rangoTipo = 'semana'; // semana | quincena | mes | trimestre | semestre | anio
+let rangoAnchor = null;   // Date ancla que define en qué período estamos parados
+let desbloqueos = [];     // filas de desbloqueos_fecha vigentes en el rango visible
+let vencimientos = [];    // calendario de vencimientos cargado
 
 /* ---------- utilidades ---------- */
 function toast(msg){
@@ -555,23 +712,83 @@ function fmtDate(d){ // YYYY-MM-DD -> DD/MM
   const [y,m,day] = d.split('-');
   return `${day}/${m}`;
 }
+function fmtDateLarga(d){ // YYYY-MM-DD -> DD/MM/YYYY
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
 function todayStr(){
   const d = new Date();
   return d.toISOString().slice(0,10);
 }
-function buildLast7(){
-  const arr = [];
-  for(let i=6;i>=0;i--){
-    const d = new Date();
-    d.setDate(d.getDate()-i);
-    arr.push(d.toISOString().slice(0,10));
-  }
-  return arr;
-}
+function toISO(d){ return d.toISOString().slice(0,10); }
 function diaLabel(fecha){
   const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const d = new Date(fecha+'T00:00:00');
   return dias[d.getDay()];
+}
+
+/* ---------- RANGO DE FECHAS (días laborables lunes a sábado) ---------- */
+// calcula el [desde, hasta] calendario del período "tipo" que contiene a "anchor"
+function limitesPeriodo(tipo, anchor){
+  const a = new Date(anchor);
+  let desde, hasta;
+  if(tipo === 'semana'){
+    const dow = a.getDay(); // 0=Dom..6=Sáb
+    const diffLunes = (dow===0) ? -6 : (1-dow);
+    desde = new Date(a); desde.setDate(a.getDate()+diffLunes);
+    hasta = new Date(desde); hasta.setDate(desde.getDate()+5); // sábado
+  } else if(tipo === 'quincena'){
+    if(a.getDate()<=15){
+      desde = new Date(a.getFullYear(), a.getMonth(), 1);
+      hasta = new Date(a.getFullYear(), a.getMonth(), 15);
+    } else {
+      desde = new Date(a.getFullYear(), a.getMonth(), 16);
+      hasta = new Date(a.getFullYear(), a.getMonth()+1, 0); // último día del mes
+    }
+  } else if(tipo === 'mes'){
+    desde = new Date(a.getFullYear(), a.getMonth(), 1);
+    hasta = new Date(a.getFullYear(), a.getMonth()+1, 0);
+  } else if(tipo === 'trimestre'){
+    const q = Math.floor(a.getMonth()/3);
+    desde = new Date(a.getFullYear(), q*3, 1);
+    hasta = new Date(a.getFullYear(), q*3+3, 0);
+  } else if(tipo === 'semestre'){
+    const s = a.getMonth()<6 ? 0 : 6;
+    desde = new Date(a.getFullYear(), s, 1);
+    hasta = new Date(a.getFullYear(), s+6, 0);
+  } else { // anio
+    desde = new Date(a.getFullYear(), 0, 1);
+    hasta = new Date(a.getFullYear(), 11, 31);
+  }
+  return { desde, hasta };
+}
+// mueve el ancla un período hacia adelante(+1)/atrás(-1)
+function moverAnchor(tipo, anchor, dir){
+  const a = new Date(anchor);
+  if(tipo === 'semana') a.setDate(a.getDate()+7*dir);
+  else if(tipo === 'quincena') a.setDate(a.getDate()+15*dir);
+  else if(tipo === 'mes') a.setMonth(a.getMonth()+dir);
+  else if(tipo === 'trimestre') a.setMonth(a.getMonth()+3*dir);
+  else if(tipo === 'semestre') a.setMonth(a.getMonth()+6*dir);
+  else a.setFullYear(a.getFullYear()+dir);
+  return a;
+}
+// genera las fechas laborables (lunes a sábado, sin domingos) entre desde y hasta inclusive
+function generarDiasLaborables(desde, hasta){
+  const arr = [];
+  const cur = new Date(desde);
+  while(cur <= hasta){
+    if(cur.getDay() !== 0) arr.push(toISO(cur)); // excluye domingo
+    cur.setDate(cur.getDate()+1);
+  }
+  return arr;
+}
+function recalcularRango(){
+  const { desde, hasta } = limitesPeriodo(rangoTipo, rangoAnchor);
+  diasRango = generarDiasLaborables(desde, hasta);
+  const lbl = { semana:'Semana', quincena:'Quincena', mes:'Mes', trimestre:'Trimestre', semestre:'Semestre', anio:'Año' }[rangoTipo];
+  document.getElementById('rangeLabel').textContent =
+    `${lbl}: ${fmtDateLarga(diasRango[0])} — ${fmtDateLarga(diasRango[diasRango.length-1])} (días hábiles lun–sáb)`;
 }
 
 /* ---------- AUTH ---------- */
@@ -610,8 +827,8 @@ async function afterLogin(authUser){
   const nivelLabel = currentUser.es_admin ? 'Admin' : (currentUser.nivel===1?'Gerencia':currentUser.nivel===2?'Jefe':'Equipo');
   document.getElementById('whoNivel').textContent = nivelLabel;
 
-  last7 = buildLast7();
-  document.getElementById('rangeLabel').textContent = `${fmtDate(last7[0])} — ${fmtDate(last7[6])}`;
+  rangoAnchor = new Date();
+  recalcularRango();
 
   if(currentUser.nivel===1 || currentUser.es_admin){
     document.getElementById('tabBtnUsuarios').classList.remove('hidden');
@@ -621,6 +838,28 @@ async function afterLogin(authUser){
   await cargarMatriz();
 }
 
+/* ---------- CONTROLES DE RANGO DE FECHAS ---------- */
+document.getElementById('rangoTipo').addEventListener('change', function(){
+  rangoTipo = this.value;
+  recalcularRango();
+  cargarMatriz();
+});
+document.getElementById('btnRangoPrev').addEventListener('click', ()=>{
+  rangoAnchor = moverAnchor(rangoTipo, rangoAnchor, -1);
+  recalcularRango();
+  cargarMatriz();
+});
+document.getElementById('btnRangoNext').addEventListener('click', ()=>{
+  rangoAnchor = moverAnchor(rangoTipo, rangoAnchor, 1);
+  recalcularRango();
+  cargarMatriz();
+});
+document.getElementById('btnRangoHoy').addEventListener('click', ()=>{
+  rangoAnchor = new Date();
+  recalcularRango();
+  cargarMatriz();
+});
+
 /* ---------- CAMBIO DE PESTAÑA ---------- */
 function cambiarTab(tab){
   currentTab = tab;
@@ -628,9 +867,11 @@ function cambiarTab(tab){
   document.getElementById('tabMatriz').classList.toggle('hidden', tab!=='matriz');
   document.getElementById('tabKpi').classList.toggle('hidden', tab!=='kpi');
   document.getElementById('tabBitacora').classList.toggle('hidden', tab!=='bitacora');
+  document.getElementById('tabVencimientos').classList.toggle('hidden', tab!=='vencimientos');
   document.getElementById('tabUsuarios').classList.toggle('hidden', tab!=='usuarios');
   if(tab==='kpi') cargarKpi();
   if(tab==='bitacora') cargarBitacora();
+  if(tab==='vencimientos') cargarVencimientosTab();
   if(tab==='usuarios') cargarUsuariosTab();
 }
 
@@ -677,8 +918,22 @@ async function cargarMatriz(){
 
   await asegurarInstancias();
   await cargarInstancias();
+  await cargarDesbloqueos();
   poblarFiltroFuncionario();
   aplicarFiltrosMatriz();
+}
+
+// trae los desbloqueos de fecha vigentes en el rango visible (todos los departamentos + null=todos)
+async function cargarDesbloqueos(){
+  if(diasRango.length===0){ desbloqueos = []; return; }
+  const { data, error } = await sb.from('desbloqueos_fecha')
+    .select('*').gte('fecha', diasRango[0]).lte('fecha', diasRango[diasRango.length-1]);
+  if(error){ desbloqueos = []; return; }
+  desbloqueos = data || [];
+}
+// true si la fecha f está desbloqueada para el departamento deptId (o para todos)
+function fechaDesbloqueada(f, deptId){
+  return desbloqueos.some(d => d.fecha===f && (d.departamento_id===null || d.departamento_id===deptId));
 }
 
 function poblarFiltroFuncionario(){
@@ -705,7 +960,7 @@ function aplicarFiltrosMatriz(){
     if(func && t.asignado_a !== func) return false;
     if(estadoFiltro){
       if(estadoFiltro === 'VENCIDA'){
-        const tieneVencida = last7.some(f=> f<hoy && fechaAplicaFrecuencia(t,f) && (!t.fecha_inicio || f>=t.fecha_inicio) && (!t.fecha_limite || f<=t.fecha_limite) &&
+        const tieneVencida = diasRango.some(f=> f<hoy && fechaAplicaFrecuencia(t,f) && (!t.fecha_inicio || f>=t.fecha_inicio) && (!t.fecha_limite || f<=t.fecha_limite) &&
           (instancias[`${t.id}_${f}`]?.estado || 'PENDIENTE') === 'PENDIENTE');
         if(!tieneVencida) return false;
       } else {
@@ -737,7 +992,7 @@ function renderVencidasBanner(){
   const hoy = todayStr();
   let count = 0;
   tareasBase.forEach(t=>{
-    last7.forEach(f=>{
+    diasRango.forEach(f=>{
       if(f>=hoy) return;
       if(t.fecha_inicio && f < t.fecha_inicio) return;
       if(t.fecha_limite && f > t.fecha_limite) return;
@@ -780,7 +1035,7 @@ async function asegurarInstancias(){
   const filas = [];
   const hoy = todayStr();
   for(const t of tareasBase){
-    for(const f of last7){
+    for(const f of diasRango){
       if(f > hoy) continue;
       if(t.fecha_inicio && f < t.fecha_inicio) continue;
       if(t.fecha_limite && f > t.fecha_limite) continue;
@@ -800,8 +1055,8 @@ async function cargarInstancias(){
   const { data } = await sb.from('tarea_instancias')
     .select('*')
     .in('tarea_id', ids)
-    .gte('fecha', last7[0])
-    .lte('fecha', last7[6]);
+    .gte('fecha', diasRango[0])
+    .lte('fecha', diasRango[diasRango.length-1]);
   (data||[]).forEach(i=>{ instancias[`${i.tarea_id}_${i.fecha}`] = i; });
 }
 
@@ -812,8 +1067,18 @@ function renderMatriz(){
   const empty = document.getElementById('emptyState');
   const table = document.getElementById('matrizTable');
 
+  const esGerente = currentUser.es_admin || currentUser.nivel===1;
+  const hoy = todayStr();
+
   head.innerHTML = `<th>Tarea</th>` +
-    last7.map(f=>`<th class="daycol">${diaLabel(f)}<span class="daynum">${fmtDate(f)}</span></th>`).join('') +
+    diasRango.map(f=>{
+      const desbAll = fechaDesbloqueada(f, null) || desbloqueos.some(d=>d.fecha===f);
+      const claseTh = desbAll ? ' desbloqueada' : '';
+      const toggleBtn = esGerente
+        ? `<button class="unlock-toggle${desbAll?' activo':''}" title="${desbAll?'Volver a bloquear este día':'Desbloquear este día para todos'}" onclick="toggleDesbloqueoDia('${f}')">${desbAll?'🔓':'🔒'}</button>`
+        : '';
+      return `<th class="daycol${claseTh}">${diaLabel(f)}<span class="daynum">${fmtDate(f)}</span>${toggleBtn}</th>`;
+    }).join('') +
     `<th>Acciones</th>`;
 
   if(tareas.length===0){
@@ -825,22 +1090,23 @@ function renderMatriz(){
   table.classList.remove('hidden');
   empty.classList.add('hidden');
 
-  const puedeEditarTareas = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
-  const hoy = todayStr();
-
   body.innerHTML = tareas.map(t=>{
     const dept = departamentos.find(d=>d.id===t.departamento_id);
     const asign = usuarios.find(u=>u.id===t.asignado_a);
-    const celdas = last7.map(f=>{
+    const puedeEditarEstaTarea = currentUser.es_admin || currentUser.nivel===1
+      || (currentUser.nivel===2 && t.departamento_id===currentUser.departamento_id)
+      || (t.asignado_a===currentUser.id);
+    const celdas = diasRango.map(f=>{
       const fueraDeRango = (t.fecha_inicio && f < t.fecha_inicio) || (t.fecha_limite && f > t.fecha_limite) || f > hoy || !fechaAplicaFrecuencia(t, f);
       if(fueraDeRango){
         return `<td class="cell"><button class="estado-btn futuro locked" disabled title="No corresponde este día">·</button></td>`;
       }
       const inst = instancias[`${t.id}_${f}`];
       const estado = inst ? inst.estado : 'PENDIENTE';
-      // nivel1/2/admin pueden corregir cualquier día de su alcance; nivel3 solo hoy
-      const editable = (f === hoy) || currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
-      const puedeUsuario = currentUser.nivel===3 ? (t.asignado_a===currentUser.id) : true;
+      // Gerencia/admin: cualquier día de su alcance. Jefes/Equipo: solo hoy, salvo que
+      // Gerencia haya desbloqueado esa fecha puntual (para todos o para el depto de la tarea).
+      const editable = esGerente || (f === hoy) || fechaDesbloqueada(f, t.departamento_id);
+      const puedeUsuario = currentUser.nivel===3 ? (t.asignado_a===currentUser.id) : (!t.privada || t.asignado_a===currentUser.id || currentUser.es_admin);
       const clickable = editable && puedeUsuario;
 
       const vencida = estado==='PENDIENTE' && f < hoy;
@@ -867,7 +1133,7 @@ function renderMatriz(){
       </td>`;
     }).join('');
 
-    const acciones = puedeEditarTareas ? `
+    const acciones = puedeEditarEstaTarea ? `
       <div class="row-actions">
         <button class="icon-btn" title="Editar" onclick="abrirTaskModal('${t.id}')">✏️</button>
       </div>` : '';
@@ -876,13 +1142,41 @@ function renderMatriz(){
 
     return `<tr>
       <td>
-        <div class="task-title">${t.titulo}</div>
+        <div class="task-title">${t.privada?'🔒 ':''}${t.titulo}</div>
         <div class="task-meta">${dept? dept.icono+' '+dept.nombre : ''} · ${asign? asign.nombre : ''} · ${FREQ_LABEL[t.frecuencia]||'Diaria'}</div>
       </td>
       ${celdas}
       <td>${acciones}</td>
     </tr>`;
   }).join('');
+}
+
+// Gerencia/admin: alterna el desbloqueo de un día (para TODOS los departamentos).
+// Si querés desbloquear solo un depto puntual, filtrá por ese depto en "deptFilter"
+// y usá el mismo botón: desbloquea únicamente ese departamento para esa fecha.
+async function toggleDesbloqueoDia(fecha){
+  const esGerente = currentUser.es_admin || currentUser.nivel===1;
+  if(!esGerente){ toast('Solo Gerencia puede desbloquear fechas.'); return; }
+
+  const deptObjetivo = selectedDept || null; // null = todos los departamentos
+  const existente = desbloqueos.find(d=>d.fecha===fecha && d.departamento_id===deptObjetivo);
+
+  if(existente){
+    if(!confirm(`¿Volver a bloquear el ${fmtDate(fecha)}${deptObjetivo? ' para el departamento filtrado':' para todos los departamentos'}?`)) return;
+    const { error } = await sb.from('desbloqueos_fecha').delete().eq('id', existente.id);
+    if(error){ toast('Error al bloquear: '+error.message); return; }
+    toast('Fecha bloqueada de nuevo');
+  } else {
+    const motivo = prompt(`Desbloquear ${fmtDate(fecha)}${deptObjetivo? ' solo para el departamento filtrado' : ' para TODOS los departamentos'}.\n\nMotivo (opcional):`, '');
+    if(motivo === null) return; // canceló
+    const { error } = await sb.from('desbloqueos_fecha').insert({
+      fecha, departamento_id: deptObjetivo, motivo: motivo || null, creado_por: currentUser.id
+    });
+    if(error){ toast('Error al desbloquear: '+error.message); return; }
+    toast('Fecha desbloqueada ✓');
+  }
+  await cargarDesbloqueos();
+  renderMatriz();
 }
 
 /* ---------- MODAL: TAREA (crear / editar / borrar) ---------- */
@@ -895,10 +1189,11 @@ function abrirTaskModal(tareaId){
   const overlay = document.getElementById('taskModalOverlay');
   const deptSel = document.getElementById('taskDepartamento');
   const asigSel = document.getElementById('taskAsignado');
+  const esNivel3 = currentUser.nivel===3 && !currentUser.es_admin;
 
   // poblar departamentos según nivel
   let deptsVisibles = departamentos;
-  if(currentUser.nivel===2 && !currentUser.es_admin){
+  if((currentUser.nivel===2 || esNivel3) && !currentUser.es_admin){
     deptsVisibles = departamentos.filter(d=>d.id===currentUser.departamento_id);
   }
   deptSel.innerHTML = deptsVisibles.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
@@ -909,6 +1204,18 @@ function abrirTaskModal(tareaId){
   }
   deptSel.onchange = ()=>poblarAsignados(deptSel.value);
   poblarAsignados(deptSel.value);
+
+  // nivel 3: la tarea siempre es de su propio departamento y asignada a sí mismo
+  if(esNivel3 && !tareaId){
+    deptSel.value = currentUser.departamento_id;
+    deptSel.disabled = true;
+    poblarAsignados(currentUser.departamento_id);
+    asigSel.value = currentUser.id;
+    asigSel.disabled = true;
+  } else {
+    deptSel.disabled = false;
+    asigSel.disabled = false;
+  }
 
   document.getElementById('btnDeleteTask').classList.toggle('hidden', !tareaId);
 
@@ -923,6 +1230,9 @@ function abrirTaskModal(tareaId){
     document.getElementById('taskFrecuencia').value = t.frecuencia || 'diaria';
     document.getElementById('taskFechaInicio').value = t.fecha_inicio || '';
     document.getElementById('taskFechaLimite').value = t.fecha_limite || '';
+    // solo el propio dueño (o admin) puede tocar depto/asignado de una tarea de nivel 3;
+    // si el que edita no es dueño ni admin/jefe con permiso, se deshabilita igual
+    if(esNivel3){ deptSel.disabled = true; asigSel.disabled = true; }
   } else {
     document.getElementById('taskModalTitle').textContent = 'Nueva tarea';
     document.getElementById('taskId').value = '';
@@ -937,14 +1247,21 @@ function abrirTaskModal(tareaId){
 
 document.getElementById('btnSaveTask').addEventListener('click', async ()=>{
   const id = document.getElementById('taskId').value;
+  const esNivel3 = currentUser.nivel===3 && !currentUser.es_admin;
+  const departamento_id = esNivel3 ? currentUser.departamento_id : document.getElementById('taskDepartamento').value;
+  const asignado_a = esNivel3 ? currentUser.id : document.getElementById('taskAsignado').value;
+  // Gerencia (nivel 1, no admin) que se autoasigna una tarea: queda privada, solo la ve ella misma.
+  const esAutoAsignacionGerente = currentUser.nivel===1 && !currentUser.es_admin && asignado_a===currentUser.id;
+
   const payload = {
     titulo: document.getElementById('taskTitulo').value.trim(),
     descripcion: document.getElementById('taskDescripcion').value.trim() || null,
-    departamento_id: document.getElementById('taskDepartamento').value,
-    asignado_a: document.getElementById('taskAsignado').value,
+    departamento_id,
+    asignado_a,
     frecuencia: document.getElementById('taskFrecuencia').value,
     fecha_inicio: document.getElementById('taskFechaInicio').value || todayStr(),
     fecha_limite: document.getElementById('taskFechaLimite').value || null,
+    privada: esAutoAsignacionGerente,
   };
   if(!payload.titulo){ toast('Poné un título para la tarea.'); return; }
 
@@ -956,7 +1273,7 @@ document.getElementById('btnSaveTask').addEventListener('click', async ()=>{
     ({ error } = await sb.from('tareas').insert(payload));
   }
   if(error){ toast('Error al guardar: '+error.message); return; }
-  toast(id ? 'Tarea actualizada' : 'Tarea creada');
+  toast(id ? 'Tarea actualizada' : (esAutoAsignacionGerente ? 'Tarea creada — es privada, solo vos la vas a ver' : 'Tarea creada'));
   cerrarTaskModal();
   await cargarMatriz();
 });
@@ -1241,6 +1558,247 @@ function renderKpi(tareasKpi, instKpi, desde, hasta){
   }
   document.getElementById('kpiContent').innerHTML = html;
 }
+
+/* =========================================================
+   CALENDARIO DE VENCIMIENTOS POR DEPARTAMENTO
+   (cobranzas, pagos de servicios, impuestos, licencias, contratos...)
+========================================================= */
+let vencimientosBase = [];
+let vencSelectedDept = null;
+
+async function cargarVencimientosTab(){
+  const puedeGestionar = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+  document.getElementById('btnNuevoVencimiento').classList.toggle('hidden', !puedeGestionar);
+
+  const deptSel = document.getElementById('vencDeptFilter');
+  if(currentUser.es_admin || currentUser.nivel===1){
+    deptSel.classList.remove('hidden');
+    deptSel.innerHTML = `<option value="">Todos los departamentos</option>` +
+      departamentos.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+    deptSel.value = vencSelectedDept || '';
+    deptSel.onchange = ()=>{ vencSelectedDept = deptSel.value || null; cargarVencimientosTab(); };
+    document.getElementById('vencSubLabel').textContent = 'Cobranzas, pagos, impuestos, licencias y contratos — todos los departamentos';
+  } else {
+    deptSel.classList.add('hidden');
+    const miDept = departamentos.find(d=>d.id===currentUser.departamento_id);
+    document.getElementById('vencSubLabel').textContent = `Cobranzas, pagos, impuestos, licencias y contratos de ${miDept? miDept.icono+' '+miDept.nombre : 'tu departamento'}`;
+  }
+
+  let q = sb.from('vencimientos').select('*').order('fecha_vencimiento', { ascending: true, nullsFirst: false });
+  if(currentUser.nivel===2 && !currentUser.es_admin){
+    q = q.eq('departamento_id', currentUser.departamento_id);
+  } else if((currentUser.es_admin || currentUser.nivel===1) && vencSelectedDept){
+    q = q.eq('departamento_id', vencSelectedDept);
+  }
+  const { data, error } = await q;
+  if(error){ toast('Error al cargar vencimientos: '+error.message); return; }
+  vencimientosBase = data || [];
+  aplicarFiltrosVencimientos();
+}
+
+['vFCategoria','vFEstado'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', aplicarFiltrosVencimientos);
+});
+
+function aplicarFiltrosVencimientos(){
+  const cat = document.getElementById('vFCategoria').value;
+  const est = document.getElementById('vFEstado').value;
+  const filtrados = vencimientosBase.filter(v=>{
+    if(cat && v.categoria !== cat) return false;
+    if(est && v.estado !== est) return false;
+    return true;
+  });
+  renderVencimientos(filtrados);
+}
+
+function estadoVisualVencimiento(v){
+  const hoy = todayStr();
+  if(v.estado === 'COMPLETADO') return 'completado';
+  if(!v.fecha_vencimiento) return 'sinfecha';
+  if(v.fecha_vencimiento < hoy) return 'vencido';
+  const en7 = new Date(); en7.setDate(en7.getDate()+7);
+  if(v.fecha_vencimiento <= toISO(en7)) return 'proximo';
+  return 'ok';
+}
+
+function renderVencimientos(lista){
+  const hoy = todayStr();
+  const en7 = new Date(); en7.setDate(en7.getDate()+7);
+  const en7str = toISO(en7);
+  const hace30 = new Date(); hace30.setDate(hace30.getDate()-30);
+
+  const vencidos = vencimientosBase.filter(v=>v.estado==='PENDIENTE' && v.fecha_vencimiento && v.fecha_vencimiento<hoy);
+  const proximos = vencimientosBase.filter(v=>v.estado==='PENDIENTE' && v.fecha_vencimiento && v.fecha_vencimiento>=hoy && v.fecha_vencimiento<=en7str);
+  const sinFecha = vencimientosBase.filter(v=>v.estado==='PENDIENTE' && !v.fecha_vencimiento);
+  const completados30 = vencimientosBase.filter(v=>v.estado==='COMPLETADO' && v.actualizado_en && v.actualizado_en.slice(0,10)>=toISO(hace30));
+
+  document.getElementById('vencCountVencidos').textContent = vencidos.length;
+  document.getElementById('vencCountProximos').textContent = proximos.length;
+  document.getElementById('vencCountSinFecha').textContent = sinFecha.length;
+  document.getElementById('vencCountCompletados').textContent = completados30.length;
+
+  const cont = document.getElementById('vencimientosContent');
+  if(lista.length===0){
+    cont.innerHTML = `<div class="empty-state">No hay vencimientos cargados todavía${document.getElementById('btnNuevoVencimiento').classList.contains('hidden')?'.':'. Creá el primero con "+ Nuevo vencimiento".'}</div>`;
+    return;
+  }
+
+  const puedeGestionar = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+  const CAT_ICONO = { 'Cobranza':'💰','Pago de servicio':'🧾','Impuesto':'🏛️','Licencia':'📄','Contrato':'🤝','Otro':'📌' };
+  const REC_LABEL = { unica:'Única vez', mensual:'Mensual', trimestral:'Trimestral', semestral:'Semestral', anual:'Anual' };
+
+  const filas = lista.map(v=>{
+    const dept = departamentos.find(d=>d.id===v.departamento_id);
+    const resp = usuarios.find(u=>u.id===v.responsable_id);
+    const vis = estadoVisualVencimiento(v);
+    const fechaTxt = v.fecha_vencimiento
+      ? `${fmtDateLarga(v.fecha_vencimiento)}${vis==='vencido'?' · ⚠️ vencido':(vis==='proximo'?' · 🔔 próximo':'')}`
+      : '📌 sin definir';
+    const claseFecha = v.estado==='COMPLETADO' ? 'completado' : (v.fecha_vencimiento ? vis : 'sinfecha');
+    const accionesHtml = puedeGestionar ? `
+      <div class="row-actions">
+        ${v.estado==='PENDIENTE' ? `<button class="icon-btn" title="Marcar completado" onclick="completarVencimiento('${v.id}')">✅</button>` : ''}
+        <button class="icon-btn" title="Editar" onclick="abrirVencModal('${v.id}')">✏️</button>
+      </div>` : '—';
+
+    return `<tr>
+      <td><strong>${v.titulo}</strong>${v.notas? `<div class="task-meta">${v.notas.replace(/</g,'&lt;')}</div>`:''}</td>
+      <td><span class="cat-chip">${CAT_ICONO[v.categoria]||'📌'} ${v.categoria}</span></td>
+      <td>${dept? dept.icono+' '+dept.nombre : '—'}</td>
+      <td class="venc-fecha ${claseFecha}">${fechaTxt}${v.recurrencia!=='unica'? ` <span class="task-meta">(${REC_LABEL[v.recurrencia]})</span>`:''}</td>
+      <td>${resp? resp.nombre : '—'}</td>
+      <td>${v.estado==='COMPLETADO'? '<span class="pill pill-good">Completado</span>' : '<span class="pill pill-warn">Pendiente</span>'}</td>
+      <td>${accionesHtml}</td>
+    </tr>`;
+  }).join('');
+
+  cont.innerHTML = `<table class="venc-table">
+    <thead><tr><th>Vencimiento</th><th>Categoría</th><th>Depto</th><th>Fecha tope</th><th>Responsable</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>${filas}</tbody>
+  </table>`;
+}
+
+// avanza una fecha "recurrencia" períodos hacia adelante (para reprogramar tras completar)
+function avanzarFecha(fechaISO, recurrencia){
+  const d = new Date(fechaISO+'T00:00:00');
+  if(recurrencia==='mensual') d.setMonth(d.getMonth()+1);
+  else if(recurrencia==='trimestral') d.setMonth(d.getMonth()+3);
+  else if(recurrencia==='semestral') d.setMonth(d.getMonth()+6);
+  else if(recurrencia==='anual') d.setFullYear(d.getFullYear()+1);
+  return toISO(d);
+}
+
+async function completarVencimiento(id){
+  const v = vencimientosBase.find(x=>x.id===id);
+  if(!v) return;
+  if(v.recurrencia !== 'unica' && v.fecha_vencimiento){
+    const proximaFecha = avanzarFecha(v.fecha_vencimiento, v.recurrencia);
+    const { error } = await sb.from('vencimientos').update({
+      fecha_vencimiento: proximaFecha, estado: 'PENDIENTE', actualizado_en: new Date().toISOString()
+    }).eq('id', id);
+    if(error){ toast('Error al actualizar: '+error.message); return; }
+    toast(`Completado ✓ — próximo vencimiento programado para ${fmtDateLarga(proximaFecha)}`);
+  } else {
+    const { error } = await sb.from('vencimientos').update({
+      estado: 'COMPLETADO', actualizado_en: new Date().toISOString()
+    }).eq('id', id);
+    if(error){ toast('Error al actualizar: '+error.message); return; }
+    toast('Marcado como completado ✓');
+  }
+  await cargarVencimientosTab();
+}
+
+document.getElementById('btnNuevoVencimiento').addEventListener('click', ()=>abrirVencModal(null));
+document.getElementById('btnCancelVenc').addEventListener('click', ()=>{
+  document.getElementById('vencModalOverlay').classList.add('hidden');
+});
+
+function abrirVencModal(vencId){
+  const deptSel = document.getElementById('vencDepartamento');
+  const respSel = document.getElementById('vencResponsable');
+
+  let deptsVisibles = departamentos;
+  if(currentUser.nivel===2 && !currentUser.es_admin){
+    deptsVisibles = departamentos.filter(d=>d.id===currentUser.departamento_id);
+  }
+  deptSel.innerHTML = deptsVisibles.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+
+  function poblarResponsables(deptId){
+    const enDept = usuarios.filter(u=>u.departamento_id===deptId);
+    respSel.innerHTML = `<option value="">— Sin asignar —</option>` + enDept.map(u=>`<option value="${u.id}">${u.nombre}</option>`).join('');
+  }
+  deptSel.onchange = ()=>poblarResponsables(deptSel.value);
+  poblarResponsables(deptSel.value);
+
+  document.getElementById('btnDeleteVenc').classList.toggle('hidden', !vencId);
+
+  if(vencId){
+    const v = vencimientosBase.find(x=>x.id===vencId);
+    document.getElementById('vencModalTitle').textContent = 'Editar vencimiento';
+    document.getElementById('vencId').value = v.id;
+    document.getElementById('vencTitulo').value = v.titulo;
+    document.getElementById('vencCategoria').value = v.categoria;
+    deptSel.value = v.departamento_id; poblarResponsables(deptSel.value);
+    document.getElementById('vencFecha').value = v.fecha_vencimiento || '';
+    document.getElementById('vencRecurrencia').value = v.recurrencia || 'unica';
+    document.getElementById('vencMonto').value = v.monto ?? '';
+    respSel.value = v.responsable_id || '';
+    document.getElementById('vencNotas').value = v.notas || '';
+  } else {
+    document.getElementById('vencModalTitle').textContent = 'Nuevo vencimiento';
+    document.getElementById('vencId').value = '';
+    document.getElementById('vencTitulo').value = '';
+    document.getElementById('vencCategoria').value = 'Otro';
+    if(currentUser.nivel===2 && !currentUser.es_admin) deptSel.value = currentUser.departamento_id;
+    poblarResponsables(deptSel.value);
+    document.getElementById('vencFecha').value = '';
+    document.getElementById('vencRecurrencia').value = 'unica';
+    document.getElementById('vencMonto').value = '';
+    respSel.value = '';
+    document.getElementById('vencNotas').value = '';
+  }
+  document.getElementById('vencModalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('btnSaveVenc').addEventListener('click', async ()=>{
+  const id = document.getElementById('vencId').value;
+  const montoRaw = document.getElementById('vencMonto').value;
+  const payload = {
+    titulo: document.getElementById('vencTitulo').value.trim(),
+    categoria: document.getElementById('vencCategoria').value,
+    departamento_id: document.getElementById('vencDepartamento').value,
+    fecha_vencimiento: document.getElementById('vencFecha').value || null,
+    recurrencia: document.getElementById('vencRecurrencia').value,
+    monto: montoRaw ? parseFloat(montoRaw) : null,
+    responsable_id: document.getElementById('vencResponsable').value || null,
+    notas: document.getElementById('vencNotas').value.trim() || null,
+    actualizado_en: new Date().toISOString(),
+  };
+  if(!payload.titulo){ toast('Poné un título.'); return; }
+
+  let error;
+  if(id){
+    ({ error } = await sb.from('vencimientos').update(payload).eq('id', id));
+  } else {
+    payload.creado_por = currentUser.id;
+    ({ error } = await sb.from('vencimientos').insert(payload));
+  }
+  if(error){ toast('Error al guardar: '+error.message); return; }
+  toast(id ? 'Vencimiento actualizado' : 'Vencimiento creado');
+  document.getElementById('vencModalOverlay').classList.add('hidden');
+  await cargarVencimientosTab();
+});
+
+document.getElementById('btnDeleteVenc').addEventListener('click', async ()=>{
+  const id = document.getElementById('vencId').value;
+  if(!id) return;
+  if(!confirm('¿Borrar este vencimiento del calendario?')) return;
+  const { error } = await sb.from('vencimientos').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message); return; }
+  toast('Vencimiento eliminado');
+  document.getElementById('vencModalOverlay').classList.add('hidden');
+  await cargarVencimientosTab();
+});
 
 /* =========================================================
    USUARIOS (solo nivel 1 / admin)
