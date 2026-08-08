@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskFlow · Matriz de Cumplimiento</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#1c1f26;
+    --paper:#f6f5f1;
+    --line:#dcd8cc;
+    --accent:#2f5d50;   /* verde bosque - "realizado" */
+    --accent-2:#b3572b; /* terracota oscuro - acciones */
+    --amber:#c48a1c;    /* en proceso */
+    --red:#a13d3d;      /* pendiente/vencido */
+    --gray:#8b8a84;     /* no aplica */
+    --card:#ffffff;
+    --shadow:0 1px 3px rgba(28,31,38,.08), 0 8px 24px rgba(28,31,38,.06);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .hidden{display:none !important}
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(160deg,#1c1f26 0%,#2f5d50 100%);
+  }
+  .login-card{
+    background:var(--card); width:100%; max-width:380px; padding:40px 32px;
+    border-radius:14px; box-shadow:var(--shadow);
+  }
+  .login-card h1{font-size:1.5rem; margin:0 0 4px; letter-spacing:-.01em}
+  .login-card p{color:#6b6a63; margin:0 0 24px; font-size:.92rem}
+  .field{margin-bottom:16px}
+  .field label{display:block; font-size:.78rem; font-weight:600; color:#6b6a63; margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em}
+  .field input, .field select, .field textarea{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+    font-size:.95rem; background:#fff; color:var(--ink);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--accent); outline-offset:1px}
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 18px; border-radius:8px; border:none; font-weight:600; font-size:.9rem;
+    cursor:pointer; transition:filter .15s ease;
+  }
+  .btn:hover{filter:brightness(1.08)}
+  .btn-primary{background:var(--accent); color:#fff; width:100%}
+  .btn-secondary{background:#eeece4; color:var(--ink)}
+  .btn-danger{background:var(--red); color:#fff}
+  .btn-ghost{background:transparent; color:var(--accent-2); border:1px solid var(--line)}
+  #loginError{color:var(--red); font-size:.85rem; margin-top:10px; min-height:1em}
+
+  /* ---------- APP SHELL ---------- */
+  #app{min-height:100vh}
+  header.topbar{
+    background:var(--ink); color:#fff; padding:14px 24px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  header.topbar .brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em}
+  header.topbar .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  header.topbar .who{font-size:.82rem; color:#c7c6bf; display:flex; align-items:center; gap:10px}
+  header.topbar .who .badge{background:rgba(255,255,255,.1); padding:3px 9px; border-radius:100px; font-weight:600}
+
+  main{max-width:1200px; margin:0 auto; padding:24px}
+  .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap}
+  .toolbar h2{margin:0; font-size:1.3rem; letter-spacing:-.01em}
+  .toolbar .sub{color:#6b6a63; font-size:.85rem; margin-top:2px}
+  select#deptFilter{padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:#fff}
+
+  /* ---------- TAB NAV ---------- */
+  .tabnav{
+    background:#fff; border-bottom:1px solid var(--line); padding:0 24px;
+    display:flex; gap:4px; overflow-x:auto;
+  }
+  .tab-btn{
+    background:none; border:none; padding:13px 16px; font-size:.88rem; font-weight:600;
+    color:#8b8a84; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;
+  }
+  .tab-btn:hover{color:var(--ink)}
+  .tab-btn.active{color:var(--accent); border-bottom-color:var(--accent)}
+
+  /* ---------- KPI ---------- */
+  .kpi-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:22px}
+  .kpi-card{background:var(--card); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow)}
+  .kpi-card .kpi-label{font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:#8b8a84; font-weight:700}
+  .kpi-card .kpi-value{font-size:1.7rem; font-weight:700; margin-top:4px; letter-spacing:-.02em}
+  .dept-block{margin-bottom:22px}
+  .dept-block-title{
+    background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px 10px 0 0;
+    font-weight:700; font-size:.9rem; display:flex; align-items:center; gap:8px;
+  }
+  table.kpi-table{width:100%; border-collapse:collapse; background:var(--card); box-shadow:var(--shadow); border-radius:0 0 10px 10px; overflow:hidden}
+  table.kpi-table th, table.kpi-table td{padding:10px 14px; text-align:left; border-bottom:1px solid var(--line); font-size:.86rem}
+  table.kpi-table th{background:#efece2; font-size:.7rem; text-transform:uppercase; color:#6b6a63; letter-spacing:.03em}
+  .eff-bar-wrap{background:#eeece4; border-radius:100px; height:8px; width:100px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:8px}
+  .eff-bar{height:100%; border-radius:100px; background:var(--accent)}
+  .rank-badge{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#eeece4; font-size:.72rem; font-weight:700; margin-right:6px}
+
+  /* ---------- USUARIOS TABLE ---------- */
+  table.users-table{width:100%; border-collapse:collapse; background:var(--card); box-shadow:var(--shadow); border-radius:12px; overflow:hidden}
+  table.users-table th, table.users-table td{padding:11px 14px; text-align:left; border-bottom:1px solid var(--line); font-size:.87rem}
+  table.users-table th{background:#efece2; font-size:.71rem; text-transform:uppercase; color:#6b6a63; letter-spacing:.03em}
+  .lvl-tag{padding:3px 9px; border-radius:100px; font-size:.72rem; font-weight:700}
+  .lvl-1{background:#f6e9e9; color:var(--red)}
+  .lvl-2{background:#faf1e0; color:var(--amber)}
+  .lvl-3{background:#e7eef5; color:#2a5c8a}
+  .admin-tag{background:#eee3f5; color:#6b3fa0; padding:3px 9px; border-radius:100px; font-size:.72rem; font-weight:700; margin-left:4px}
+
+  /* ---------- FILTROS ---------- */
+  .filter-bar{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;
+    background:var(--card); padding:12px 14px; border-radius:12px; box-shadow:var(--shadow);
+  }
+  .filter-bar input, .filter-bar select{
+    padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:.85rem;
+  }
+  .filter-bar input[type="text"]{min-width:180px}
+  .filter-clear{background:none; border:none; color:var(--accent-2); font-size:.82rem; font-weight:600; cursor:pointer; padding:6px 4px;}
+
+  /* ---------- ALERTA DE VENCIDAS ---------- */
+  .alert-banner{
+    background:#f6e9e9; border:1px solid var(--red); color:var(--red); padding:10px 16px;
+    border-radius:10px; font-size:.85rem; font-weight:600; margin-bottom:16px;
+    display:flex; align-items:center; gap:8px;
+  }
+
+  /* ---------- VALIDACIÓN JERÁRQUICA ---------- */
+  .estado-btn.vencida{background:#f6e9e9; border-color:var(--red); color:var(--red); animation:none; box-shadow:0 0 0 2px rgba(161,61,61,.25) inset}
+  .estado-btn.pendiente-val{position:relative}
+  .estado-btn.pendiente-val::after{
+    content:''; position:absolute; top:-3px; right:-3px; width:9px; height:9px; border-radius:50%;
+    background:var(--amber); border:1.5px solid #fff;
+  }
+  .val-badge{
+    display:inline-flex; align-items:center; gap:5px; background:#faf1e0; color:var(--amber);
+    padding:3px 10px; border-radius:100px; font-size:.72rem; font-weight:700; margin-left:8px;
+  }
+
+  /* ---------- BITÁCORA ---------- */
+  .bitacora-form{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:18px; margin-bottom:20px}
+  .bitacora-entry{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:14px 18px; margin-bottom:10px}
+  .bitacora-entry .cat-tag{
+    display:inline-block; background:#eeece4; color:#6b6a63; padding:3px 10px; border-radius:100px;
+    font-size:.72rem; font-weight:700; margin-bottom:6px;
+  }
+  .bitacora-entry .fecha{float:right; font-size:.76rem; color:#8b8a84}
+  .bitacora-entry .contenido{white-space:pre-wrap; font-size:.9rem; line-height:1.5; margin-top:4px}
+  .bitacora-entry .actions{margin-top:8px; display:flex; gap:8px}
+
+  /* ---------- RESUMEN EJECUTIVO ---------- */
+  .resumen-dept-table th, .resumen-dept-table td{padding:10px 14px}
+  .pill{padding:2px 9px; border-radius:100px; font-size:.72rem; font-weight:700}
+  .pill-good{background:#e7f0ec; color:var(--accent)}
+  .pill-warn{background:#faf1e0; color:var(--amber)}
+  .pill-bad{background:#f6e9e9; color:var(--red)}
+
+  /* ---------- MATRIZ ---------- */
+  .matriz-wrap{background:var(--card); border-radius:12px; box-shadow:var(--shadow); overflow-x:auto}
+  table.matriz{width:100%; border-collapse:collapse; min-width:760px}
+  table.matriz th, table.matriz td{padding:10px 12px; text-align:left; border-bottom:1px solid var(--line)}
+  table.matriz thead th{
+    background:#efece2; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em;
+    color:#6b6a63; font-weight:700; white-space:nowrap;
+  }
+  table.matriz thead th.daycol{text-align:center}
+  table.matriz thead th .daynum{display:block; font-size:.95rem; color:var(--ink); margin-top:2px}
+  table.matriz tbody tr:hover{background:#faf9f5}
+  .task-title{font-weight:600; font-size:.92rem}
+  .task-meta{font-size:.76rem; color:#8b8a84; margin-top:2px}
+  .cell{text-align:center}
+  .estado-btn{
+    width:34px; height:34px; border-radius:9px; border:1px solid var(--line); background:#fff;
+    font-size:1rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+  }
+  .estado-btn.locked{cursor:default; opacity:.75}
+  .estado-btn.REALIZADO{background:#e7f0ec; border-color:var(--accent); color:var(--accent)}
+  .estado-btn.EN_PROCESO{background:#faf1e0; border-color:var(--amber); color:var(--amber)}
+  .estado-btn.PENDIENTE{background:#f6e9e9; border-color:var(--red); color:var(--red)}
+  .estado-btn.NO_APLICA{background:#f0efec; border-color:var(--gray); color:var(--gray)}
+  .estado-btn.futuro{background:#f6f5f1; border-color:var(--line); color:#c7c6bf}
+  .row-actions{display:flex; gap:6px}
+  .icon-btn{
+    width:30px; height:30px; border-radius:7px; border:1px solid var(--line); background:#fff;
+    cursor:pointer; font-size:.85rem; display:inline-flex; align-items:center; justify-content:center;
+  }
+  .icon-btn:hover{background:#f0efe8}
+  .empty-state{padding:60px 24px; text-align:center; color:#8b8a84}
+
+  /* legend */
+  .legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-size:.8rem; color:#6b6a63}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .legend i{width:12px; height:12px; border-radius:4px; display:inline-block}
+
+  /* ---------- MODAL ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(28,31,38,.5); display:flex; align-items:center; justify-content:center;
+    padding:20px; z-index:50;
+  }
+  .modal{background:var(--card); border-radius:14px; width:100%; max-width:460px; padding:28px; box-shadow:var(--shadow); max-height:90vh; overflow-y:auto}
+  .modal h3{margin:0 0 18px; font-size:1.15rem}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:20px}
+  .status-picker{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
+  .status-opt{
+    flex:1; min-width:110px; padding:12px 8px; border-radius:9px; border:1.5px solid var(--line);
+    background:#fff; cursor:pointer; text-align:center; font-size:.82rem; font-weight:600;
+  }
+  .status-opt.sel-REALIZADO{border-color:var(--accent); background:#e7f0ec; color:var(--accent)}
+  .status-opt.sel-EN_PROCESO{border-color:var(--amber); background:#faf1e0; color:var(--amber)}
+  .status-opt.sel-PENDIENTE{border-color:var(--red); background:#f6e9e9; color:var(--red)}
+  .status-opt.sel-NO_APLICA{border-color:var(--gray); background:#f0efec; color:var(--gray)}
+
+  #toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:11px 20px; border-radius:9px; font-size:.85rem;
+    box-shadow:var(--shadow); z-index:100; opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  #toast.show{opacity:1}
+
+  @media (max-width:640px){
+    main{padding:14px}
+    .modal{padding:20px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>TaskFlow</h1>
+    <p>Iniciá sesión para ver tu matriz de tareas.</p>
+    <div class="field">
+      <label>Correo</label>
+      <input type="email" id="loginEmail" placeholder="nombre@empresa.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" id="btnLogin">Ingresar</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> TaskFlow</div>
+    <div class="who">
+      <span id="whoName"></span>
+      <span class="badge" id="whoNivel"></span>
+      <button class="btn btn-ghost" id="btnLogout" style="padding:6px 12px;">Salir</button>
+    </div>
+  </header>
+
+  <nav class="tabnav">
+    <button class="tab-btn active" data-tab="matriz" onclick="cambiarTab('matriz')">📅 Matriz</button>
+    <button class="tab-btn" data-tab="kpi" onclick="cambiarTab('kpi')">📊 KPIs</button>
+    <button class="tab-btn" data-tab="bitacora" onclick="cambiarTab('bitacora')">📝 Bitácora</button>
+    <button class="tab-btn hidden" data-tab="usuarios" id="tabBtnUsuarios" onclick="cambiarTab('usuarios')">👥 Usuarios</button>
+  </nav>
+
+  <main>
+    <!-- -------- TAB: MATRIZ -------- -->
+    <div id="tabMatriz">
+      <div class="toolbar">
+        <div>
+          <h2>Matriz de cumplimiento</h2>
+          <div class="sub" id="rangeLabel"></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="deptFilter" class="hidden"></select>
+          <button class="btn btn-primary" id="btnNuevaTarea">+ Nueva tarea</button>
+        </div>
+      </div>
+
+      <div class="alert-banner hidden" id="vencidasBanner"></div>
+
+      <div class="filter-bar">
+        <input type="text" id="fTexto" placeholder="🔍 Buscar por título...">
+        <select id="fFrecuencia">
+          <option value="">Toda frecuencia</option>
+          <option value="diaria">Diaria</option>
+          <option value="semanal">Semanal</option>
+          <option value="mensual">Mensual</option>
+          <option value="ocasional">Ocasional</option>
+          <option value="unica">Única vez</option>
+        </select>
+        <select id="fFuncionario"><option value="">Todo funcionario</option></select>
+        <select id="fEstadoHoy">
+          <option value="">Todo estado (hoy)</option>
+          <option value="REALIZADO">✅ Realizado</option>
+          <option value="EN_PROCESO">🔄 En proceso</option>
+          <option value="PENDIENTE">⏳ Pendiente</option>
+          <option value="NO_APLICA">➖ No aplica</option>
+          <option value="VENCIDA">⚠️ Vencidas (cualquier día)</option>
+        </select>
+        <button class="filter-clear" id="btnClearFiltros">Limpiar filtros</button>
+      </div>
+
+      <div class="matriz-wrap">
+        <table class="matriz" id="matrizTable">
+          <thead><tr id="matrizHead"></tr></thead>
+          <tbody id="matrizBody"></tbody>
+        </table>
+        <div class="empty-state hidden" id="emptyState">Todavía no hay tareas asignadas acá. Creá la primera con "+ Nueva tarea".</div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i> Realizado</span>
+        <span><i style="background:var(--amber)"></i> En proceso</span>
+        <span><i style="background:var(--red)"></i> Pendiente</span>
+        <span><i style="background:var(--gray)"></i> No aplica</span>
+        <span><i style="background:var(--red); box-shadow:0 0 0 2px rgba(161,61,61,.25) inset"></i> ⚠️ Vencida</span>
+        <span><i style="background:var(--amber); border-radius:50%; width:9px; height:9px;"></i> Pendiente de validar</span>
+        <span><i style="background:#e5e3da; border:1px solid var(--line)"></i> Fuera de rango / bloqueado</span>
+      </div>
+    </div>
+
+    <!-- -------- TAB: KPI + RESUMEN EJECUTIVO -------- -->
+    <div id="tabKpi" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Resumen ejecutivo &amp; KPI</h2>
+          <div class="sub" id="kpiRangeLabel"></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="kpiPeriodo">
+            <option value="7">Últimos 7 días</option>
+            <option value="30" selected>Últimos 30 días</option>
+            <option value="90">Últimos 90 días</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+          <input type="date" id="kpiDesde" class="hidden">
+          <span id="kpiHastaLbl" class="hidden" style="font-size:.82rem; color:#8b8a84;">hasta</span>
+          <input type="date" id="kpiHasta" class="hidden">
+        </div>
+      </div>
+      <div id="kpiContent"></div>
+    </div>
+
+    <!-- -------- TAB: BITÁCORA PERSONAL -------- -->
+    <div id="tabBitacora" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Bitácora personal</h2>
+          <div class="sub">Privada — ni tu jefe ni administradores pueden verla</div>
+        </div>
+      </div>
+      <div class="bitacora-form">
+        <div class="field">
+          <label>Categoría</label>
+          <select id="bitCategoria">
+            <option>General</option>
+            <option>Incidencia</option>
+            <option>Observación</option>
+            <option>Decisión</option>
+            <option>Reunión</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Anotación</label>
+          <textarea id="bitContenido" rows="3" placeholder="Escribí tu nota..."></textarea>
+        </div>
+        <button class="btn btn-primary" id="btnAddBitacora">+ Agregar anotación</button>
+      </div>
+      <div id="bitacoraList"></div>
+    </div>
+
+    <!-- -------- TAB: USUARIOS (solo nivel 1 / admin) -------- -->
+    <div id="tabUsuarios" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Usuarios</h2>
+          <div class="sub">Crear, editar y asignar nivel/departamento</div>
+        </div>
+        <button class="btn btn-primary" id="btnNuevoUsuario">+ Nuevo usuario</button>
+      </div>
+      <div id="usuariosContent"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ MODAL: nueva/editar tarea ============ -->
+<div class="overlay hidden" id="taskModalOverlay">
+  <div class="modal">
+    <h3 id="taskModalTitle">Nueva tarea</h3>
+    <input type="hidden" id="taskId">
+    <div class="field">
+      <label>Título</label>
+      <input type="text" id="taskTitulo" placeholder="Ej: Conciliar cuenta corriente">
+    </div>
+    <div class="field">
+      <label>Descripción (opcional)</label>
+      <textarea id="taskDescripcion" rows="2" placeholder="Detalle breve"></textarea>
+    </div>
+    <div class="field">
+      <label>Departamento</label>
+      <select id="taskDepartamento"></select>
+    </div>
+    <div class="field">
+      <label>Asignado a</label>
+      <select id="taskAsignado"></select>
+    </div>
+    <div class="field">
+      <label>Frecuencia</label>
+      <select id="taskFrecuencia">
+        <option value="diaria">📅 Diaria — todos los días</option>
+        <option value="semanal">📆 Semanal — un día por semana</option>
+        <option value="mensual">🗓️ Mensual — un día por mes</option>
+        <option value="ocasional">🔁 Ocasional — sin patrón fijo</option>
+        <option value="unica">📌 Única vez</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Fecha de inicio</label>
+      <input type="date" id="taskFechaInicio">
+    </div>
+    <div class="field">
+      <label>Fecha límite (opcional)</label>
+      <input type="date" id="taskFechaLimite">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelTask">Cancelar</button>
+      <button class="btn btn-danger hidden" id="btnDeleteTask">Borrar</button>
+      <button class="btn btn-primary" id="btnSaveTask">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: cambiar estado ============ -->
+<div class="overlay hidden" id="statusModalOverlay">
+  <div class="modal">
+    <h3 id="statusModalTitle">Cambiar estado</h3>
+    <input type="hidden" id="statusInstanciaTareaId">
+    <input type="hidden" id="statusFecha">
+    <div class="status-picker" id="statusPicker">
+      <button class="status-opt" data-estado="REALIZADO">✅ Realizado</button>
+      <button class="status-opt" data-estado="EN_PROCESO">🔄 En proceso</button>
+      <button class="status-opt" data-estado="PENDIENTE">⏳ Pendiente</button>
+      <button class="status-opt" data-estado="NO_APLICA">➖ No aplica</button>
+    </div>
+    <div class="field" style="margin-top:14px">
+      <label>Observación (opcional)</label>
+      <textarea id="statusObservacion" rows="2"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelStatus">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveStatus">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ============ MODAL: nuevo/editar usuario ============ -->
+<!-- ============ MODAL: validar tarea (jefe/gerencia) ============ -->
+<div class="overlay hidden" id="validarModalOverlay">
+  <div class="modal">
+    <h3 id="validarModalTitle">Validar tarea</h3>
+    <p style="color:#6b6a63; font-size:.85rem; margin-top:-10px;">Marcada como realizada por el funcionario. Confirmá si corresponde aprobarla o rechazarla.</p>
+    <input type="hidden" id="validarTareaId">
+    <input type="hidden" id="validarFecha">
+    <div class="field">
+      <label>Observación (opcional, obligatoria si rechazás)</label>
+      <textarea id="validarObservacion" rows="2"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="btnRechazarValidacion">✗ Rechazar</button>
+      <button class="btn btn-primary" id="btnAprobarValidacion">✓ Aprobar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="userModalOverlay">
+  <div class="modal">
+    <h3 id="userModalTitle">Nuevo usuario</h3>
+    <input type="hidden" id="userId">
+    <div class="field">
+      <label>Nombre</label>
+      <input type="text" id="userNombre" placeholder="Nombre y apellido">
+    </div>
+    <div class="field">
+      <label>Correo</label>
+      <input type="email" id="userEmail" placeholder="nombre@empresa.com">
+    </div>
+    <div class="field" id="userPassField">
+      <label>Contraseña (mínimo 6 caracteres)</label>
+      <input type="password" id="userPassword" placeholder="••••••••">
+    </div>
+    <div class="field">
+      <label>Departamento</label>
+      <select id="userDepartamento"></select>
+    </div>
+    <div class="field">
+      <label>Cargo</label>
+      <input type="text" id="userCargo" placeholder="Ej: Analista">
+    </div>
+    <div class="field">
+      <label>Nivel</label>
+      <select id="userNivel">
+        <option value="3">👤 Equipo (nivel 3)</option>
+        <option value="2">👔 Jefe (nivel 2)</option>
+        <option value="1">🏢 Gerencia (nivel 1)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-weight:500; font-size:.88rem;">
+        <input type="checkbox" id="userEsAdmin" style="width:auto;"> Es administrador
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelUser">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveUser">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURACIÓN — completar con los datos de tu proyecto Supabase
+   (Project Settings > API)
+========================================================= */
+const SUPABASE_URL = 'https://enmesbplqcedxyazqidx.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_RgeMs1Pui5WbYvsW2UxFzQ_mgVwGJ7l';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const ESTADOS = ['REALIZADO','EN_PROCESO','PENDIENTE','NO_APLICA'];
+const ESTADO_ICONO = { REALIZADO:'✅', EN_PROCESO:'🔄', PENDIENTE:'⏳', NO_APLICA:'➖' };
+
+let currentUser = null;   // fila de la tabla "usuarios"
+let currentTab = 'matriz'; // matriz | kpi | usuarios
+let departamentos = [];
+let usuarios = [];        // para selects de "asignado a"
+let tareas = [];
+let instancias = {};      // key `${tarea_id}_${fecha}` -> instancia
+let last7 = [];           // array de fechas (YYYY-MM-DD), más antigua primero
+let selectedDept = null;  // filtro de departamento para nivel 1/admin
+
+/* ---------- utilidades ---------- */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function fmtDate(d){ // YYYY-MM-DD -> DD/MM
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}`;
+}
+function todayStr(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+function buildLast7(){
+  const arr = [];
+  for(let i=6;i>=0;i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    arr.push(d.toISOString().slice(0,10));
+  }
+  return arr;
+}
+function diaLabel(fecha){
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(fecha+'T00:00:00');
+  return dias[d.getDay()];
+}
+
+/* ---------- AUTH ---------- */
+document.getElementById('btnLogin').addEventListener('click', login);
+document.getElementById('loginPassword').addEventListener('keydown', e=>{ if(e.key==='Enter') login(); });
+
+async function login(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = 'Completá correo y contraseña.'; return; }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ errEl.textContent = 'Error real de Supabase: ' + error.message + ' (código: ' + (error.status||'?') + ')'; return; }
+  await afterLogin(data.user);
+}
+
+document.getElementById('btnLogout').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  location.reload();
+});
+
+async function afterLogin(authUser){
+  const { data: perfil, error } = await sb.from('usuarios').select('*').eq('id', authUser.id).single();
+  if(error || !perfil){
+    const detalle = error ? `${error.message} (código: ${error.code||'?'})` : 'no se encontró ninguna fila con ese id';
+    document.getElementById('loginError').textContent = `Error real al buscar perfil: ${detalle} · id buscado: ${authUser.id}`;
+    await sb.auth.signOut();
+    return;
+  }
+  currentUser = perfil;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('whoName').textContent = currentUser.nombre;
+  const nivelLabel = currentUser.es_admin ? 'Admin' : (currentUser.nivel===1?'Gerencia':currentUser.nivel===2?'Jefe':'Equipo');
+  document.getElementById('whoNivel').textContent = nivelLabel;
+
+  last7 = buildLast7();
+  document.getElementById('rangeLabel').textContent = `${fmtDate(last7[0])} — ${fmtDate(last7[6])}`;
+
+  if(currentUser.nivel===1 || currentUser.es_admin){
+    document.getElementById('tabBtnUsuarios').classList.remove('hidden');
+  }
+
+  await cargarDatosBase();
+  await cargarMatriz();
+}
+
+/* ---------- CAMBIO DE PESTAÑA ---------- */
+function cambiarTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.getElementById('tabMatriz').classList.toggle('hidden', tab!=='matriz');
+  document.getElementById('tabKpi').classList.toggle('hidden', tab!=='kpi');
+  document.getElementById('tabBitacora').classList.toggle('hidden', tab!=='bitacora');
+  document.getElementById('tabUsuarios').classList.toggle('hidden', tab!=='usuarios');
+  if(tab==='kpi') cargarKpi();
+  if(tab==='bitacora') cargarBitacora();
+  if(tab==='usuarios') cargarUsuariosTab();
+}
+
+
+// sesión persistida
+sb.auth.getSession().then(async ({data})=>{
+  if(data.session){ await afterLogin(data.session.user); }
+});
+
+/* ---------- CARGA DE DATOS ---------- */
+async function cargarDatosBase(){
+  const { data: depts } = await sb.from('departamentos').select('*').order('nombre');
+  departamentos = depts || [];
+
+  // filtro de departamento visible solo para nivel 1 / admin
+  const deptFilter = document.getElementById('deptFilter');
+  if(currentUser.nivel===1 || currentUser.es_admin){
+    deptFilter.classList.remove('hidden');
+    deptFilter.innerHTML = `<option value="">Todos los departamentos</option>` +
+      departamentos.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+    deptFilter.onchange = ()=>{ selectedDept = deptFilter.value || null; cargarMatriz(); };
+  }
+
+  let q = sb.from('usuarios').select('*').order('nombre');
+  const { data: us } = await q;
+  usuarios = us || [];
+}
+
+let tareasBase = []; // sin filtros de texto/frecuencia/funcionario/estado, solo scope de rol+depto
+
+async function cargarMatriz(){
+  let q = sb.from('tareas').select('*').eq('activo', true).order('creado_en');
+  if((currentUser.nivel===2) && !currentUser.es_admin){
+    q = q.eq('departamento_id', currentUser.departamento_id);
+  } else if(currentUser.nivel===3){
+    q = q.eq('asignado_a', currentUser.id);
+  } else if(selectedDept){
+    q = q.eq('departamento_id', selectedDept);
+  }
+  const { data: tData, error } = await q;
+  if(error){ toast('Error al cargar tareas: '+error.message); return; }
+  tareasBase = tData || [];
+  tareas = tareasBase;
+
+  await asegurarInstancias();
+  await cargarInstancias();
+  poblarFiltroFuncionario();
+  aplicarFiltrosMatriz();
+}
+
+function poblarFiltroFuncionario(){
+  const sel = document.getElementById('fFuncionario');
+  const valPrevio = sel.value;
+  const idsEnBase = [...new Set(tareasBase.map(t=>t.asignado_a))];
+  const opciones = usuarios.filter(u=>idsEnBase.includes(u.id));
+  sel.innerHTML = `<option value="">Todo funcionario</option>` +
+    opciones.map(u=>`<option value="${u.id}">${u.nombre}</option>`).join('');
+  sel.value = valPrevio;
+}
+
+// aplica los filtros de la barra sobre tareasBase (ya scopeada por rol) sin re-consultar Supabase
+function aplicarFiltrosMatriz(){
+  const texto = document.getElementById('fTexto').value.trim().toLowerCase();
+  const freq = document.getElementById('fFrecuencia').value;
+  const func = document.getElementById('fFuncionario').value;
+  const estadoFiltro = document.getElementById('fEstadoHoy').value;
+  const hoy = todayStr();
+
+  tareas = tareasBase.filter(t=>{
+    if(texto && !t.titulo.toLowerCase().includes(texto)) return false;
+    if(freq && t.frecuencia !== freq) return false;
+    if(func && t.asignado_a !== func) return false;
+    if(estadoFiltro){
+      if(estadoFiltro === 'VENCIDA'){
+        const tieneVencida = last7.some(f=> f<hoy && fechaAplicaFrecuencia(t,f) && (!t.fecha_inicio || f>=t.fecha_inicio) && (!t.fecha_limite || f<=t.fecha_limite) &&
+          (instancias[`${t.id}_${f}`]?.estado || 'PENDIENTE') === 'PENDIENTE');
+        if(!tieneVencida) return false;
+      } else {
+        const instHoy = instancias[`${t.id}_${hoy}`];
+        const estadoHoy = instHoy ? instHoy.estado : 'PENDIENTE';
+        if(estadoHoy !== estadoFiltro) return false;
+      }
+    }
+    return true;
+  });
+
+  renderMatriz();
+  renderVencidasBanner();
+}
+
+['fTexto','fFrecuencia','fFuncionario','fEstadoHoy'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', aplicarFiltrosMatriz);
+  document.getElementById(id).addEventListener('change', aplicarFiltrosMatriz);
+});
+document.getElementById('btnClearFiltros').addEventListener('click', ()=>{
+  document.getElementById('fTexto').value = '';
+  document.getElementById('fFrecuencia').value = '';
+  document.getElementById('fFuncionario').value = '';
+  document.getElementById('fEstadoHoy').value = '';
+  aplicarFiltrosMatriz();
+});
+
+function renderVencidasBanner(){
+  const hoy = todayStr();
+  let count = 0;
+  tareasBase.forEach(t=>{
+    last7.forEach(f=>{
+      if(f>=hoy) return;
+      if(t.fecha_inicio && f < t.fecha_inicio) return;
+      if(t.fecha_limite && f > t.fecha_limite) return;
+      if(!fechaAplicaFrecuencia(t,f)) return;
+      const inst = instancias[`${t.id}_${f}`];
+      const estado = inst ? inst.estado : 'PENDIENTE';
+      if(estado==='PENDIENTE') count++;
+    });
+  });
+  const banner = document.getElementById('vencidasBanner');
+  if(count>0){
+    banner.classList.remove('hidden');
+    banner.innerHTML = `⚠️ Hay <strong>${count}</strong> tarea${count===1?'':'s'} vencida${count===1?'':'s'} (quedaron en Pendiente al pasar el día).`;
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+// determina si una fecha corresponde según la frecuencia de la tarea
+function fechaAplicaFrecuencia(t, f){
+  const freq = t.frecuencia || 'diaria';
+  if(freq === 'diaria' || freq === 'ocasional') return true; // cualquier día es marcable
+  if(freq === 'unica') return f === t.fecha_inicio;           // un solo día, para siempre
+  if(freq === 'semanal'){
+    const dIni = new Date(t.fecha_inicio+'T00:00:00').getDay();
+    const dF = new Date(f+'T00:00:00').getDay();
+    return dIni === dF;                                       // mismo día de la semana
+  }
+  if(freq === 'mensual'){
+    const dIni = new Date(t.fecha_inicio+'T00:00:00').getDate();
+    const dF = new Date(f+'T00:00:00').getDate();
+    return dIni === dF;                                       // mismo día del mes
+  }
+  return true;
+}
+
+// crea (upsert) las instancias de los últimos 7 días para cada tarea activa,
+// respetando fecha_inicio, fecha_limite y frecuencia
+async function asegurarInstancias(){
+  const filas = [];
+  const hoy = todayStr();
+  for(const t of tareasBase){
+    for(const f of last7){
+      if(f > hoy) continue;
+      if(t.fecha_inicio && f < t.fecha_inicio) continue;
+      if(t.fecha_limite && f > t.fecha_limite) continue;
+      if(!fechaAplicaFrecuencia(t, f)) continue;
+      filas.push({ tarea_id: t.id, fecha: f });
+    }
+  }
+  if(filas.length===0) return;
+  // upsert ignorando conflicto (no pisa estados ya guardados)
+  await sb.from('tarea_instancias').upsert(filas, { onConflict: 'tarea_id,fecha', ignoreDuplicates: true });
+}
+
+async function cargarInstancias(){
+  instancias = {};
+  if(tareasBase.length===0) return;
+  const ids = tareasBase.map(t=>t.id);
+  const { data } = await sb.from('tarea_instancias')
+    .select('*')
+    .in('tarea_id', ids)
+    .gte('fecha', last7[0])
+    .lte('fecha', last7[6]);
+  (data||[]).forEach(i=>{ instancias[`${i.tarea_id}_${i.fecha}`] = i; });
+}
+
+/* ---------- RENDER MATRIZ ---------- */
+function renderMatriz(){
+  const head = document.getElementById('matrizHead');
+  const body = document.getElementById('matrizBody');
+  const empty = document.getElementById('emptyState');
+  const table = document.getElementById('matrizTable');
+
+  head.innerHTML = `<th>Tarea</th>` +
+    last7.map(f=>`<th class="daycol">${diaLabel(f)}<span class="daynum">${fmtDate(f)}</span></th>`).join('') +
+    `<th>Acciones</th>`;
+
+  if(tareas.length===0){
+    body.innerHTML='';
+    table.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+  table.classList.remove('hidden');
+  empty.classList.add('hidden');
+
+  const puedeEditarTareas = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+  const hoy = todayStr();
+
+  body.innerHTML = tareas.map(t=>{
+    const dept = departamentos.find(d=>d.id===t.departamento_id);
+    const asign = usuarios.find(u=>u.id===t.asignado_a);
+    const celdas = last7.map(f=>{
+      const fueraDeRango = (t.fecha_inicio && f < t.fecha_inicio) || (t.fecha_limite && f > t.fecha_limite) || f > hoy || !fechaAplicaFrecuencia(t, f);
+      if(fueraDeRango){
+        return `<td class="cell"><button class="estado-btn futuro locked" disabled title="No corresponde este día">·</button></td>`;
+      }
+      const inst = instancias[`${t.id}_${f}`];
+      const estado = inst ? inst.estado : 'PENDIENTE';
+      // nivel1/2/admin pueden corregir cualquier día de su alcance; nivel3 solo hoy
+      const editable = (f === hoy) || currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+      const puedeUsuario = currentUser.nivel===3 ? (t.asignado_a===currentUser.id) : true;
+      const clickable = editable && puedeUsuario;
+
+      const vencida = estado==='PENDIENTE' && f < hoy;
+      const pendienteVal = estado==='REALIZADO' && inst && inst.validado===false;
+      const esSupervisorDeOtro = currentUser.id !== t.asignado_a && (currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2);
+
+      let clases = estado;
+      if(vencida) clases += ' vencida';
+      if(pendienteVal) clases += ' pendiente-val';
+      if(!clickable) clases += ' locked';
+
+      const icono = vencida ? '⚠️' : ESTADO_ICONO[estado];
+      const tituloBtn = vencida ? 'Vencida — quedó pendiente' : (pendienteVal ? `${estado.replace('_',' ')} · pendiente de validar` : estado.replace('_',' '));
+
+      let onclickAttr = 'disabled';
+      if(clickable){
+        onclickAttr = (pendienteVal && esSupervisorDeOtro)
+          ? `onclick="abrirValidarModal('${t.id}','${f}')"`
+          : `onclick="abrirStatusModal('${t.id}','${f}')"`;
+      }
+
+      return `<td class="cell">
+        <button class="estado-btn ${clases}" ${onclickAttr} title="${tituloBtn}">${icono}</button>
+      </td>`;
+    }).join('');
+
+    const acciones = puedeEditarTareas ? `
+      <div class="row-actions">
+        <button class="icon-btn" title="Editar" onclick="abrirTaskModal('${t.id}')">✏️</button>
+      </div>` : '';
+
+    const FREQ_LABEL = { diaria:'Diaria', semanal:'Semanal', mensual:'Mensual', ocasional:'Ocasional', unica:'Única vez' };
+
+    return `<tr>
+      <td>
+        <div class="task-title">${t.titulo}</div>
+        <div class="task-meta">${dept? dept.icono+' '+dept.nombre : ''} · ${asign? asign.nombre : ''} · ${FREQ_LABEL[t.frecuencia]||'Diaria'}</div>
+      </td>
+      ${celdas}
+      <td>${acciones}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- MODAL: TAREA (crear / editar / borrar) ---------- */
+document.getElementById('btnNuevaTarea').addEventListener('click', ()=>abrirTaskModal(null));
+document.getElementById('btnCancelTask').addEventListener('click', cerrarTaskModal);
+
+function cerrarTaskModal(){ document.getElementById('taskModalOverlay').classList.add('hidden'); }
+
+function abrirTaskModal(tareaId){
+  const overlay = document.getElementById('taskModalOverlay');
+  const deptSel = document.getElementById('taskDepartamento');
+  const asigSel = document.getElementById('taskAsignado');
+
+  // poblar departamentos según nivel
+  let deptsVisibles = departamentos;
+  if(currentUser.nivel===2 && !currentUser.es_admin){
+    deptsVisibles = departamentos.filter(d=>d.id===currentUser.departamento_id);
+  }
+  deptSel.innerHTML = deptsVisibles.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+
+  function poblarAsignados(deptId){
+    const enDept = usuarios.filter(u=>u.departamento_id===deptId);
+    asigSel.innerHTML = enDept.map(u=>`<option value="${u.id}">${u.nombre}</option>`).join('');
+  }
+  deptSel.onchange = ()=>poblarAsignados(deptSel.value);
+  poblarAsignados(deptSel.value);
+
+  document.getElementById('btnDeleteTask').classList.toggle('hidden', !tareaId);
+
+  if(tareaId){
+    const t = tareas.find(x=>x.id===tareaId);
+    document.getElementById('taskModalTitle').textContent = 'Editar tarea';
+    document.getElementById('taskId').value = t.id;
+    document.getElementById('taskTitulo').value = t.titulo;
+    document.getElementById('taskDescripcion').value = t.descripcion || '';
+    deptSel.value = t.departamento_id; poblarAsignados(deptSel.value);
+    asigSel.value = t.asignado_a;
+    document.getElementById('taskFrecuencia').value = t.frecuencia || 'diaria';
+    document.getElementById('taskFechaInicio').value = t.fecha_inicio || '';
+    document.getElementById('taskFechaLimite').value = t.fecha_limite || '';
+  } else {
+    document.getElementById('taskModalTitle').textContent = 'Nueva tarea';
+    document.getElementById('taskId').value = '';
+    document.getElementById('taskTitulo').value = '';
+    document.getElementById('taskDescripcion').value = '';
+    document.getElementById('taskFrecuencia').value = 'diaria';
+    document.getElementById('taskFechaInicio').value = todayStr();
+    document.getElementById('taskFechaLimite').value = '';
+  }
+  overlay.classList.remove('hidden');
+}
+
+document.getElementById('btnSaveTask').addEventListener('click', async ()=>{
+  const id = document.getElementById('taskId').value;
+  const payload = {
+    titulo: document.getElementById('taskTitulo').value.trim(),
+    descripcion: document.getElementById('taskDescripcion').value.trim() || null,
+    departamento_id: document.getElementById('taskDepartamento').value,
+    asignado_a: document.getElementById('taskAsignado').value,
+    frecuencia: document.getElementById('taskFrecuencia').value,
+    fecha_inicio: document.getElementById('taskFechaInicio').value || todayStr(),
+    fecha_limite: document.getElementById('taskFechaLimite').value || null,
+  };
+  if(!payload.titulo){ toast('Poné un título para la tarea.'); return; }
+
+  let error;
+  if(id){
+    ({ error } = await sb.from('tareas').update(payload).eq('id', id));
+  } else {
+    payload.creado_por = currentUser.id;
+    ({ error } = await sb.from('tareas').insert(payload));
+  }
+  if(error){ toast('Error al guardar: '+error.message); return; }
+  toast(id ? 'Tarea actualizada' : 'Tarea creada');
+  cerrarTaskModal();
+  await cargarMatriz();
+});
+
+document.getElementById('btnDeleteTask').addEventListener('click', async ()=>{
+  const id = document.getElementById('taskId').value;
+  if(!id) return;
+  if(!confirm('¿Borrar esta tarea? Se ocultará de la matriz.')) return;
+  const { error } = await sb.from('tareas').update({ activo:false }).eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message); return; }
+  toast('Tarea eliminada');
+  cerrarTaskModal();
+  await cargarMatriz();
+});
+
+/* ---------- MODAL: CAMBIAR ESTADO ---------- */
+let statusSeleccionado = null;
+
+function abrirStatusModal(tareaId, fecha){
+  statusSeleccionado = null;
+  document.getElementById('statusInstanciaTareaId').value = tareaId;
+  document.getElementById('statusFecha').value = fecha;
+  const inst = instancias[`${tareaId}_${fecha}`];
+  document.getElementById('statusObservacion').value = inst ? (inst.observacion||'') : '';
+  const t = tareas.find(x=>x.id===tareaId);
+  document.getElementById('statusModalTitle').textContent = `${t.titulo} · ${fmtDate(fecha)}`;
+
+  document.querySelectorAll('.status-opt').forEach(btn=>{
+    btn.classList.remove(...ESTADOS.map(e=>'sel-'+e));
+    if(inst && btn.dataset.estado===inst.estado){
+      btn.classList.add('sel-'+inst.estado);
+      statusSeleccionado = inst.estado;
+    }
+  });
+  document.getElementById('statusModalOverlay').classList.remove('hidden');
+}
+
+document.querySelectorAll('.status-opt').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    statusSeleccionado = btn.dataset.estado;
+    document.querySelectorAll('.status-opt').forEach(b=>b.classList.remove(...ESTADOS.map(e=>'sel-'+e)));
+    btn.classList.add('sel-'+statusSeleccionado);
+  });
+});
+
+document.getElementById('btnCancelStatus').addEventListener('click', ()=>{
+  document.getElementById('statusModalOverlay').classList.add('hidden');
+});
+
+document.getElementById('btnSaveStatus').addEventListener('click', async ()=>{
+  if(!statusSeleccionado){ toast('Elegí un estado.'); return; }
+  const tareaId = document.getElementById('statusInstanciaTareaId').value;
+  const fecha = document.getElementById('statusFecha').value;
+  const observacion = document.getElementById('statusObservacion').value.trim() || null;
+
+  const payload = {
+    tarea_id: tareaId, fecha, estado: statusSeleccionado, observacion,
+    actualizado_por: currentUser.id, actualizado_en: new Date().toISOString()
+  };
+
+  // validación jerárquica: solo aplica cuando se marca REALIZADO
+  if(statusSeleccionado === 'REALIZADO'){
+    const t = tareas.find(x=>x.id===tareaId) || tareasBase.find(x=>x.id===tareaId);
+    const ownerNivel = t ? (usuarios.find(u=>u.id===t.asignado_a)?.nivel || 3) : 3;
+    const actorEsSupervisorDeOtro = t && currentUser.id !== t.asignado_a && (currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2);
+    if(ownerNivel <= 2 || actorEsSupervisorDeOtro){
+      // auto-validación: gerencia/jefes se auto-validan, y si un supervisor marca la tarea de otro, la avala él mismo
+      payload.validado = true; payload.validado_por = currentUser.id; payload.validado_en = new Date().toISOString();
+    } else {
+      // equipo marcando su propia tarea: queda pendiente de aprobación del jefe
+      payload.validado = false; payload.validado_por = null; payload.validado_en = null;
+    }
+  } else {
+    payload.validado = null; payload.validado_por = null; payload.validado_en = null;
+  }
+
+  const { error } = await sb.from('tarea_instancias').upsert(payload, { onConflict: 'tarea_id,fecha' });
+
+  if(error){ toast('Error al guardar estado: '+error.message); return; }
+  toast('Estado actualizado');
+  document.getElementById('statusModalOverlay').classList.add('hidden');
+  await cargarInstancias();
+  aplicarFiltrosMatriz();
+});
+
+/* ---------- VALIDACIÓN JERÁRQUICA ---------- */
+function abrirValidarModal(tareaId, fecha){
+  const t = tareas.find(x=>x.id===tareaId) || tareasBase.find(x=>x.id===tareaId);
+  const asign = usuarios.find(u=>u.id===t.asignado_a);
+  document.getElementById('validarTareaId').value = tareaId;
+  document.getElementById('validarFecha').value = fecha;
+  document.getElementById('validarModalTitle').textContent = `${t.titulo} · ${fmtDate(fecha)}`;
+  document.getElementById('validarObservacion').value = '';
+  document.querySelector('#validarModalOverlay p').textContent =
+    `Marcada como realizada por ${asign? asign.nombre : 'el funcionario'}. Confirmá si corresponde aprobarla o rechazarla.`;
+  document.getElementById('validarModalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('btnAprobarValidacion').addEventListener('click', ()=>guardarValidacion(true));
+document.getElementById('btnRechazarValidacion').addEventListener('click', ()=>guardarValidacion(false));
+
+async function guardarValidacion(aprobar){
+  const tareaId = document.getElementById('validarTareaId').value;
+  const fecha = document.getElementById('validarFecha').value;
+  const obs = document.getElementById('validarObservacion').value.trim() || null;
+
+  if(!aprobar && !obs){ toast('Para rechazar, indicá una observación.'); return; }
+
+  const payload = {
+    tarea_id: tareaId, fecha,
+    validado: aprobar, validado_por: currentUser.id, validado_en: new Date().toISOString(),
+    observacion_validacion: obs,
+    actualizado_por: currentUser.id, actualizado_en: new Date().toISOString()
+  };
+  if(!aprobar){
+    payload.estado = 'PENDIENTE'; // rechazada: vuelve a pendiente para que el funcionario la retome
+  }
+
+  const { error } = await sb.from('tarea_instancias').upsert(payload, { onConflict: 'tarea_id,fecha' });
+  if(error){ toast('Error al validar: '+error.message); return; }
+  toast(aprobar ? 'Tarea validada ✓' : 'Tarea rechazada, vuelve a pendiente');
+  document.getElementById('validarModalOverlay').classList.add('hidden');
+  await cargarInstancias();
+  aplicarFiltrosMatriz();
+}
+
+// cerrar modales clickeando el fondo
+document.querySelectorAll('.overlay').forEach(ov=>{
+  ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.add('hidden'); });
+});
+
+/* =========================================================
+   RESUMEN EJECUTIVO & KPI POR FUNCIONARIO / DEPARTAMENTO
+========================================================= */
+document.getElementById('kpiPeriodo').addEventListener('change', function(){
+  const custom = this.value === 'custom';
+  document.getElementById('kpiDesde').classList.toggle('hidden', !custom);
+  document.getElementById('kpiHastaLbl').classList.toggle('hidden', !custom);
+  document.getElementById('kpiHasta').classList.toggle('hidden', !custom);
+  if(custom && !document.getElementById('kpiHasta').value){
+    document.getElementById('kpiHasta').value = todayStr();
+    const d = new Date(); d.setDate(d.getDate()-29);
+    document.getElementById('kpiDesde').value = d.toISOString().slice(0,10);
+  }
+  cargarKpi();
+});
+document.getElementById('kpiDesde').addEventListener('change', cargarKpi);
+document.getElementById('kpiHasta').addEventListener('change', cargarKpi);
+
+async function cargarKpi(){
+  const periodoSel = document.getElementById('kpiPeriodo').value;
+  let desde, hasta;
+  if(periodoSel === 'custom'){
+    desde = document.getElementById('kpiDesde').value || todayStr();
+    hasta = document.getElementById('kpiHasta').value || todayStr();
+  } else {
+    const dias = parseInt(periodoSel, 10);
+    desde = (()=>{ const d=new Date(); d.setDate(d.getDate()-(dias-1)); return d.toISOString().slice(0,10); })();
+    hasta = todayStr();
+  }
+  document.getElementById('kpiRangeLabel').textContent = `${fmtDate(desde)} — ${fmtDate(hasta)}`;
+
+  // tareas visibles según rol (mismo criterio que la matriz, sin filtro de depto)
+  let q = sb.from('tareas').select('*').eq('activo', true);
+  if(currentUser.nivel===2 && !currentUser.es_admin){
+    q = q.eq('departamento_id', currentUser.departamento_id);
+  } else if(currentUser.nivel===3){
+    q = q.eq('asignado_a', currentUser.id);
+  }
+  const { data: tareasKpi, error: errT } = await q;
+  if(errT){ toast('Error al cargar KPI: '+errT.message); return; }
+  if(!tareasKpi || tareasKpi.length===0){
+    document.getElementById('kpiContent').innerHTML = `<div class="empty-state">No hay tareas para calcular KPI en este período.</div>`;
+    return;
+  }
+
+  const ids = tareasKpi.map(t=>t.id);
+  const { data: instKpi, error: errI } = await sb.from('tarea_instancias')
+    .select('*').in('tarea_id', ids).gte('fecha', desde).lte('fecha', hasta);
+  if(errI){ toast('Error al cargar KPI: '+errI.message); return; }
+
+  renderKpi(tareasKpi, instKpi || [], desde, hasta);
+}
+
+function renderKpi(tareasKpi, instKpi, desde, hasta){
+  const hoy = todayStr();
+  // agrupar por usuario
+  const porUsuario = {}; // usuario_id -> { realizado, validado, total, vencidas, dept }
+  instKpi.forEach(i=>{
+    if(i.estado==='NO_APLICA') return; // no cuenta ni en numerador ni denominador
+    const t = tareasKpi.find(x=>x.id===i.tarea_id);
+    if(!t) return;
+    const uid_ = t.asignado_a;
+    if(!porUsuario[uid_]) porUsuario[uid_] = { total:0, realizado:0, validado:0, vencidas:0, departamento_id:t.departamento_id };
+    porUsuario[uid_].total++;
+    if(i.estado==='REALIZADO'){
+      porUsuario[uid_].realizado++;
+      if(i.validado===true) porUsuario[uid_].validado++;
+    }
+    if(i.estado==='PENDIENTE' && i.fecha < hoy) porUsuario[uid_].vencidas++;
+  });
+
+  // KPIs globales
+  const totalGlobal = Object.values(porUsuario).reduce((s,u)=>s+u.total,0);
+  const realizadoGlobal = Object.values(porUsuario).reduce((s,u)=>s+u.realizado,0);
+  const validadoGlobal = Object.values(porUsuario).reduce((s,u)=>s+u.validado,0);
+  const vencidasGlobal = Object.values(porUsuario).reduce((s,u)=>s+u.vencidas,0);
+  const effGlobal = totalGlobal>0 ? Math.round(realizadoGlobal/totalGlobal*100) : 0;
+  const funcionariosCount = Object.keys(porUsuario).length;
+
+  let html = `<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Eficiencia general</div><div class="kpi-value">${effGlobal}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tareas realizadas</div><div class="kpi-value">${realizadoGlobal}/${totalGlobal}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Validadas por jefes</div><div class="kpi-value">${validadoGlobal}/${realizadoGlobal}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Vencidas del período</div><div class="kpi-value" style="color:${vencidasGlobal>0?'var(--red)':'inherit'}">${vencidasGlobal}</div></div>
+  </div>`;
+
+  // ---- RESUMEN EJECUTIVO: comparación por departamento ----
+  const deptsAMostrar = [...new Set(Object.values(porUsuario).map(u=>u.departamento_id))];
+  if(deptsAMostrar.length > 1 || currentUser.nivel===1 || currentUser.es_admin){
+    const filasDept = deptsAMostrar.map(deptId=>{
+      const dept = departamentos.find(d=>d.id===deptId);
+      const usDept = Object.values(porUsuario).filter(u=>u.departamento_id===deptId);
+      const total = usDept.reduce((s,u)=>s+u.total,0);
+      const realizado = usDept.reduce((s,u)=>s+u.realizado,0);
+      const vencidas = usDept.reduce((s,u)=>s+u.vencidas,0);
+      const eff = total>0 ? Math.round(realizado/total*100) : 0;
+      return { dept, eff, realizado, total, vencidas };
+    }).sort((a,b)=>b.eff-a.eff);
+
+    html += `<div class="dept-block">
+      <div class="dept-block-title">📈 Resumen ejecutivo por departamento</div>
+      <table class="kpi-table resumen-dept-table">
+        <thead><tr><th>Departamento</th><th>Cumplimiento</th><th>Realizadas</th><th>Vencidas</th></tr></thead>
+        <tbody>
+          ${filasDept.map(f=>{
+            const pillClass = f.eff>=80?'pill-good':(f.eff>=50?'pill-warn':'pill-bad');
+            return `<tr>
+              <td>${f.dept? f.dept.icono+' '+f.dept.nombre : '—'}</td>
+              <td><span class="pill ${pillClass}">${f.eff}%</span></td>
+              <td>${f.realizado}/${f.total}</td>
+              <td>${f.vencidas>0? `<span class="pill pill-bad">${f.vencidas}</span>` : '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  // ---- detalle por funcionario, agrupado por departamento ----
+  if(deptsAMostrar.length===0){
+    html += `<div class="empty-state">Sin datos suficientes todavía.</div>`;
+  } else {
+    deptsAMostrar.forEach(deptId=>{
+      const dept = departamentos.find(d=>d.id===deptId);
+      const filas = Object.entries(porUsuario)
+        .filter(([uid_,d])=>d.departamento_id===deptId)
+        .map(([uid_,d])=>{
+          const u = usuarios.find(x=>x.id===uid_);
+          const eff = d.total>0 ? Math.round(d.realizado/d.total*100) : 0;
+          return { nombre: u? u.nombre : 'Usuario', realizado:d.realizado, validado:d.validado, total:d.total, vencidas:d.vencidas, eff };
+        })
+        .sort((a,b)=>b.eff-a.eff);
+
+      html += `<div class="dept-block">
+        <div class="dept-block-title">${dept? dept.icono+' '+dept.nombre : deptId}</div>
+        <table class="kpi-table">
+          <thead><tr><th></th><th>Funcionario</th><th>Realizadas</th><th>Validadas</th><th>Vencidas</th><th>Eficiencia</th></tr></thead>
+          <tbody>
+            ${filas.map((f,idx)=>`<tr>
+              <td><span class="rank-badge">${idx+1}</span></td>
+              <td>${f.nombre}</td>
+              <td>${f.realizado}/${f.total}</td>
+              <td>${f.validado}/${f.realizado}</td>
+              <td>${f.vencidas>0? `<span class="pill pill-bad">${f.vencidas}</span>` : '—'}</td>
+              <td><span class="eff-bar-wrap"><span class="eff-bar" style="width:${f.eff}%"></span></span>${f.eff}%</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    });
+  }
+  document.getElementById('kpiContent').innerHTML = html;
+}
+
+/* =========================================================
+   USUARIOS (solo nivel 1 / admin)
+========================================================= */
+async function cargarUsuariosTab(){
+  renderUsuariosTabla();
+}
+
+function renderUsuariosTabla(){
+  const NIVEL_LABEL = { 1:'Gerencia', 2:'Jefe', 3:'Equipo' };
+  const filas = usuarios.map(u=>{
+    const dept = departamentos.find(d=>d.id===u.departamento_id);
+    return `<tr>
+      <td>${u.nombre}</td>
+      <td>${u.email}</td>
+      <td>${dept? dept.icono+' '+dept.nombre : '—'}</td>
+      <td>${u.cargo||'—'}</td>
+      <td><span class="lvl-tag lvl-${u.nivel}">${NIVEL_LABEL[u.nivel]}</span>${u.es_admin?'<span class="admin-tag">Admin</span>':''}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" title="Editar" onclick="abrirUserModal('${u.id}')">✏️</button>
+          ${u.id!==currentUser.id? `<button class="icon-btn" title="Borrar" onclick="borrarUsuario('${u.id}')">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('usuariosContent').innerHTML = `
+    <table class="users-table">
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Departamento</th><th>Cargo</th><th>Nivel</th><th>Acciones</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>`;
+}
+
+document.getElementById('btnNuevoUsuario').addEventListener('click', ()=>abrirUserModal(null));
+document.getElementById('btnCancelUser').addEventListener('click', ()=>{
+  document.getElementById('userModalOverlay').classList.add('hidden');
+});
+
+function abrirUserModal(userId){
+  const deptSel = document.getElementById('userDepartamento');
+  deptSel.innerHTML = departamentos.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+
+  if(userId){
+    const u = usuarios.find(x=>x.id===userId);
+    document.getElementById('userModalTitle').textContent = 'Editar usuario';
+    document.getElementById('userId').value = u.id;
+    document.getElementById('userNombre').value = u.nombre;
+    document.getElementById('userEmail').value = u.email;
+    document.getElementById('userEmail').setAttribute('readonly', true);
+    document.getElementById('userPassField').classList.add('hidden');
+    deptSel.value = u.departamento_id || '';
+    document.getElementById('userCargo').value = u.cargo || '';
+    document.getElementById('userNivel').value = u.nivel;
+    document.getElementById('userEsAdmin').checked = !!u.es_admin;
+  } else {
+    document.getElementById('userModalTitle').textContent = 'Nuevo usuario';
+    document.getElementById('userId').value = '';
+    document.getElementById('userNombre').value = '';
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userEmail').removeAttribute('readonly');
+    document.getElementById('userPassField').classList.remove('hidden');
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userCargo').value = '';
+    document.getElementById('userNivel').value = '3';
+    document.getElementById('userEsAdmin').checked = false;
+  }
+  document.getElementById('userModalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('btnSaveUser').addEventListener('click', async ()=>{
+  const id = document.getElementById('userId').value;
+  const nombre = document.getElementById('userNombre').value.trim();
+  const email = document.getElementById('userEmail').value.trim();
+  const departamento_id = document.getElementById('userDepartamento').value;
+  const cargo = document.getElementById('userCargo').value.trim() || null;
+  const nivel = parseInt(document.getElementById('userNivel').value, 10);
+  const es_admin = document.getElementById('userEsAdmin').checked;
+
+  if(!nombre || !email){ toast('Completá nombre y correo.'); return; }
+
+  if(id){
+    const { error } = await sb.from('usuarios').update({ nombre, departamento_id, cargo, nivel, es_admin }).eq('id', id);
+    if(error){ toast('Error al actualizar: '+error.message); return; }
+    toast('Usuario actualizado');
+  } else {
+    const password = document.getElementById('userPassword').value;
+    if(!password || password.length<6){ toast('La contraseña debe tener al menos 6 caracteres.'); return; }
+    const { error } = await sb.rpc('create_user_with_profile', {
+      p_email: email, p_password: password, p_nombre: nombre,
+      p_departamento_id: departamento_id, p_cargo: cargo, p_nivel: nivel, p_es_admin: es_admin
+    });
+    if(error){ toast('Error al crear usuario: '+error.message); return; }
+    toast('Usuario creado');
+  }
+  document.getElementById('userModalOverlay').classList.add('hidden');
+  await cargarDatosBase();
+  renderUsuariosTabla();
+});
+
+async function borrarUsuario(id){
+  if(!confirm('¿Quitar a este usuario del sistema? (su acceso de login quedará huérfano; para borrarlo del todo hacelo también desde Authentication en Supabase)')) return;
+  const { error } = await sb.from('usuarios').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message); return; }
+  toast('Usuario eliminado del listado');
+  await cargarDatosBase();
+  renderUsuariosTabla();
+}
+
+/* =========================================================
+   BITÁCORA PERSONAL (privada — RLS garantiza que solo el dueño la ve)
+========================================================= */
+async function cargarBitacora(){
+  const { data, error } = await sb.from('bitacora_entradas')
+    .select('*').eq('usuario_id', currentUser.id).order('creado_en', { ascending:false });
+  if(error){ toast('Error al cargar bitácora: '+error.message); return; }
+  renderBitacora(data || []);
+}
+
+function renderBitacora(entradas){
+  const cont = document.getElementById('bitacoraList');
+  if(entradas.length===0){
+    cont.innerHTML = `<div class="empty-state">Todavía no tenés anotaciones. Escribí la primera arriba.</div>`;
+    return;
+  }
+  cont.innerHTML = entradas.map(e=>{
+    const fecha = new Date(e.creado_en).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    return `<div class="bitacora-entry">
+      <span class="fecha">${fecha}</span>
+      <span class="cat-tag">${e.categoria}</span>
+      <div class="contenido">${e.contenido.replace(/</g,'&lt;')}</div>
+      <div class="actions">
+        <button class="icon-btn" title="Borrar" onclick="borrarBitacora('${e.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('btnAddBitacora').addEventListener('click', async ()=>{
+  const categoria = document.getElementById('bitCategoria').value;
+  const contenido = document.getElementById('bitContenido').value.trim();
+  if(!contenido){ toast('Escribí algo antes de guardar.'); return; }
+
+  const { error } = await sb.from('bitacora_entradas').insert({
+    usuario_id: currentUser.id, categoria, contenido
+  });
+  if(error){ toast('Error al guardar: '+error.message); return; }
+  document.getElementById('bitContenido').value = '';
+  toast('Anotación guardada');
+  await cargarBitacora();
+});
+
+async function borrarBitacora(id){
+  if(!confirm('¿Borrar esta anotación?')) return;
+  const { error } = await sb.from('bitacora_entradas').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message); return; }
+  await cargarBitacora();
+}
+</script>
+</body>
+</html>
