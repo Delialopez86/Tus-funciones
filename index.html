@@ -261,6 +261,29 @@
   .venc-fecha.sinfecha{color:var(--gray); font-style:italic}
   .venc-fecha.completado{color:#8b8a84; text-decoration:line-through}
 
+  /* ---------- MI DÍA (planner visual de prioridades) ---------- */
+  .kanban{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; align-items:start}
+  .kanban-col{background:#efece2; border-radius:14px; padding:14px; min-height:200px}
+  .kanban-col h3{font-size:.85rem; text-transform:uppercase; letter-spacing:.03em; margin-bottom:12px; display:flex; align-items:center; gap:8px}
+  .kanban-col.alta h3{color:#b3391c}
+  .kanban-col.media h3{color:#a67c1e}
+  .kanban-col.baja h3{color:#3a7a4e}
+  .kcount{background:#fff; border-radius:100px; padding:1px 9px; font-size:.72rem; font-weight:700}
+  .kcard{background:var(--card); border-radius:10px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--shadow); font-size:.86rem}
+  .kcard.hecho{opacity:.55}
+  .kcard.hecho .ktitle{text-decoration:line-through}
+  .kcard.sugerido{border-left:3px solid var(--amber); cursor:pointer}
+  .kcard .ktitle{font-weight:600; margin-bottom:2px}
+  .kcard .kmeta{font-size:.74rem; color:#6b6a63}
+  .kcard .kactions{display:flex; gap:6px; margin-top:8px}
+  .kcard .kactions button{
+    border:1px solid var(--line); background:#fff; border-radius:6px; padding:3px 7px;
+    font-size:.74rem; cursor:pointer;
+  }
+  .kcard .kactions button:hover{background:#f0efe8}
+  .kempty{font-size:.8rem; color:#8b8a84; font-style:italic; padding:6px 2px}
+  @media (max-width:800px){ .kanban{grid-template-columns:1fr} }
+
   @media (max-width:640px){
     main{padding:14px}
     .modal{padding:20px}
@@ -300,6 +323,7 @@
 
   <nav class="tabnav">
     <button class="tab-btn active" data-tab="matriz" onclick="cambiarTab('matriz')">📅 Matriz</button>
+    <button class="tab-btn hidden" data-tab="miDia" id="tabBtnMiDia" onclick="cambiarTab('miDia')">🧭 Mi Día</button>
     <button class="tab-btn" data-tab="kpi" onclick="cambiarTab('kpi')">📊 KPIs</button>
     <button class="tab-btn" data-tab="bitacora" onclick="cambiarTab('bitacora')">📝 Bitácora</button>
     <button class="tab-btn" data-tab="vencimientos" onclick="cambiarTab('vencimientos')">🗓️ Vencimientos</button>
@@ -427,6 +451,18 @@
         <button class="btn btn-primary" id="btnAddBitacora">+ Agregar anotación</button>
       </div>
       <div id="bitacoraList"></div>
+    </div>
+
+    <!-- -------- TAB: MI DÍA (planner visual de prioridades) -------- -->
+    <div id="tabMiDia" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Mi Día</h2>
+          <div class="sub">Organizá tus prioridades: reuniones, pendientes propios, y lo urgente de hoy en un solo lugar</div>
+        </div>
+        <button class="btn btn-primary" id="btnNuevoAgenda">+ Agregar</button>
+      </div>
+      <div class="kanban" id="kanbanBoard"></div>
     </div>
 
     <!-- -------- TAB: VENCIMIENTOS (calendario por departamento) -------- -->
@@ -614,6 +650,42 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnCancelUser">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveUser">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: nuevo item de Mi Día ============ -->
+<div class="overlay hidden" id="agendaModalOverlay">
+  <div class="modal">
+    <h3>Agregar a Mi Día</h3>
+    <div class="field">
+      <label>Título</label>
+      <input type="text" id="agendaTitulo" placeholder="Ej: Reunión con proveedores">
+    </div>
+    <div class="field">
+      <label>Tipo</label>
+      <select id="agendaTipo">
+        <option value="Reunión">📅 Reunión</option>
+        <option value="Tarea propia">✅ Tarea propia</option>
+        <option value="Recordatorio">🔔 Recordatorio</option>
+        <option value="Otro">📌 Otro</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Prioridad</label>
+      <select id="agendaPrioridad">
+        <option value="Alta">🔴 Alta</option>
+        <option value="Media" selected>🟡 Media</option>
+        <option value="Baja">🟢 Baja</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Hora (opcional)</label>
+      <input type="text" id="agendaHora" placeholder="Ej: 14:30">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelAgenda">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveAgenda">Guardar</button>
     </div>
   </div>
 </div>
@@ -833,6 +905,9 @@ async function afterLogin(authUser){
   if(currentUser.nivel===1 || currentUser.es_admin){
     document.getElementById('tabBtnUsuarios').classList.remove('hidden');
   }
+  if(currentUser.nivel===1 || currentUser.nivel===2 || currentUser.es_admin){
+    document.getElementById('tabBtnMiDia').classList.remove('hidden');
+  }
 
   await cargarDatosBase();
   await cargarMatriz();
@@ -865,10 +940,12 @@ function cambiarTab(tab){
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   document.getElementById('tabMatriz').classList.toggle('hidden', tab!=='matriz');
+  document.getElementById('tabMiDia').classList.toggle('hidden', tab!=='miDia');
   document.getElementById('tabKpi').classList.toggle('hidden', tab!=='kpi');
   document.getElementById('tabBitacora').classList.toggle('hidden', tab!=='bitacora');
   document.getElementById('tabVencimientos').classList.toggle('hidden', tab!=='vencimientos');
   document.getElementById('tabUsuarios').classList.toggle('hidden', tab!=='usuarios');
+  if(tab==='miDia') cargarMiDia();
   if(tab==='kpi') cargarKpi();
   if(tab==='bitacora') cargarBitacora();
   if(tab==='vencimientos') cargarVencimientosTab();
@@ -1557,6 +1634,131 @@ function renderKpi(tareasKpi, instKpi, desde, hasta){
     });
   }
   document.getElementById('kpiContent').innerHTML = html;
+}
+
+/* =========================================================
+   MI DÍA — planner visual de prioridades (tipo kanban)
+   Combina: agenda personal propia + lo urgente de la Matriz
+   y de Vencimientos, para organizar el día de un vistazo.
+========================================================= */
+let agendaPersonalItems = [];
+
+document.getElementById('btnNuevoAgenda').addEventListener('click', ()=>{
+  document.getElementById('agendaTitulo').value = '';
+  document.getElementById('agendaTipo').value = 'Reunión';
+  document.getElementById('agendaPrioridad').value = 'Media';
+  document.getElementById('agendaHora').value = '';
+  document.getElementById('agendaModalOverlay').classList.remove('hidden');
+});
+document.getElementById('btnCancelAgenda').addEventListener('click', ()=>{
+  document.getElementById('agendaModalOverlay').classList.add('hidden');
+});
+document.getElementById('btnSaveAgenda').addEventListener('click', async ()=>{
+  const titulo = document.getElementById('agendaTitulo').value.trim();
+  if(!titulo){ toast('Poné un título.'); return; }
+  const payload = {
+    usuario_id: currentUser.id,
+    titulo,
+    tipo: document.getElementById('agendaTipo').value,
+    prioridad: document.getElementById('agendaPrioridad').value,
+    hora: document.getElementById('agendaHora').value.trim() || null,
+    fecha: todayStr(),
+  };
+  const { error } = await sb.from('agenda_personal').insert(payload);
+  if(error){ toast('Error al guardar: '+error.message); return; }
+  document.getElementById('agendaModalOverlay').classList.add('hidden');
+  toast('Agregado a Mi Día ✓');
+  await cargarMiDia();
+});
+
+async function toggleAgendaHecho(id, actual){
+  const { error } = await sb.from('agenda_personal').update({ completado: !actual }).eq('id', id);
+  if(error){ toast('Error: '+error.message); return; }
+  await cargarMiDia();
+}
+async function moverPrioridadAgenda(id, nueva){
+  const { error } = await sb.from('agenda_personal').update({ prioridad: nueva }).eq('id', id);
+  if(error){ toast('Error: '+error.message); return; }
+  await cargarMiDia();
+}
+async function borrarAgenda(id){
+  if(!confirm('¿Quitar este ítem de Mi Día?')) return;
+  const { error } = await sb.from('agenda_personal').delete().eq('id', id);
+  if(error){ toast('Error: '+error.message); return; }
+  await cargarMiDia();
+}
+
+async function cargarMiDia(){
+  const hoy = todayStr();
+  const en7 = new Date(); en7.setDate(en7.getDate()+7);
+  const en7str = toISO(en7);
+
+  // 1) agenda personal propia de hoy
+  const { data: ag } = await sb.from('agenda_personal')
+    .select('*').eq('fecha', hoy).order('creado_en', { ascending: true });
+  agendaPersonalItems = ag || [];
+
+  // 2) tareas pendientes de hoy (según lo que ya ve este usuario por RLS)
+  const { data: inst } = await sb.from('tarea_instancias')
+    .select('id, estado, fecha, tarea_id, tareas(titulo, departamento_id)')
+    .eq('fecha', hoy).neq('estado', 'REALIZADO').neq('estado','NO_APLICA');
+  const tareasUrgentes = (inst || []).filter(i=>i.tareas).map(i=>({
+    titulo: i.tareas.titulo, dept: departamentos.find(d=>d.id===i.tareas.departamento_id)
+  }));
+
+  // 3) vencimientos vencidos / próximos 7 días
+  const { data: venc } = await sb.from('vencimientos')
+    .select('titulo, fecha_vencimiento, departamento_id, estado')
+    .eq('estado','PENDIENTE').not('fecha_vencimiento','is',null).lte('fecha_vencimiento', en7str);
+  const vencidos = (venc||[]).filter(v=>v.fecha_vencimiento<hoy);
+  const proximosVenc = (venc||[]).filter(v=>v.fecha_vencimiento>=hoy);
+
+  renderKanban(tareasUrgentes, vencidos, proximosVenc);
+}
+
+function kcardPersonal(item){
+  const ICONO = { 'Reunión':'📅','Tarea propia':'✅','Recordatorio':'🔔','Otro':'📌' };
+  const otras = ['Alta','Media','Baja'].filter(p=>p!==item.prioridad);
+  return `<div class="kcard${item.completado?' hecho':''}">
+    <div class="ktitle">${ICONO[item.tipo]||'📌'} ${item.titulo}</div>
+    <div class="kmeta">${item.hora? item.hora+' · ':''}${item.tipo}</div>
+    <div class="kactions">
+      <button onclick="toggleAgendaHecho('${item.id}', ${item.completado})">${item.completado?'↩️ Deshacer':'✓ Hecho'}</button>
+      ${otras.map(p=>`<button onclick="moverPrioridadAgenda('${item.id}','${p}')">→ ${p}</button>`).join('')}
+      <button onclick="borrarAgenda('${item.id}')">🗑️</button>
+    </div>
+  </div>`;
+}
+function kcardSugerido(titulo, meta, destino){
+  return `<div class="kcard sugerido" onclick="cambiarTab('${destino}')">
+    <div class="ktitle">${titulo}</div>
+    <div class="kmeta">${meta}</div>
+  </div>`;
+}
+
+function renderKanban(tareasUrgentes, vencidos, proximosVenc){
+  const propiosAlta = agendaPersonalItems.filter(i=>i.prioridad==='Alta');
+  const propiosMedia = agendaPersonalItems.filter(i=>i.prioridad==='Media');
+  const propiosBaja = agendaPersonalItems.filter(i=>i.prioridad==='Baja');
+
+  const sugAlta = [
+    ...vencidos.slice(0,6).map(v=>kcardSugerido(`⚠️ ${v.titulo}`, `Vencido · ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos')),
+    ...tareasUrgentes.slice(0,6).map(t=>kcardSugerido(`📋 ${t.titulo}`, `${t.dept?t.dept.icono+' '+t.dept.nombre:''} · pendiente hoy`, 'matriz')),
+  ];
+  const sugMedia = proximosVenc.slice(0,6).map(v=>kcardSugerido(`🔔 ${v.titulo}`, `Vence ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos'));
+
+  const col = (clase, titulo, propios, sugeridos) => `
+    <div class="kanban-col ${clase}">
+      <h3>${titulo} <span class="kcount">${propios.length + sugeridos.length}</span></h3>
+      ${sugeridos.join('')}
+      ${propios.map(kcardPersonal).join('')}
+      ${(propios.length + sugeridos.length)===0 ? '<div class="kempty">Nada por acá — 🎉</div>' : ''}
+    </div>`;
+
+  document.getElementById('kanbanBoard').innerHTML =
+    col('alta', '🔴 Alta', propiosAlta, sugAlta) +
+    col('media', '🟡 Media', propiosMedia, sugMedia) +
+    col('baja', '🟢 Baja', propiosBaja, []);
 }
 
 /* =========================================================
