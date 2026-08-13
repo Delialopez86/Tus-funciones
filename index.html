@@ -284,6 +284,17 @@
   .kempty{font-size:.8rem; color:#8b8a84; font-style:italic; padding:6px 2px}
   @media (max-width:800px){ .kanban{grid-template-columns:1fr} }
 
+  /* ---------- PROCEDIMIENTOS ---------- */
+  .proc-card{background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:16px 20px; margin-bottom:12px}
+  .proc-head{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; cursor:pointer}
+  .proc-titulo{font-weight:700; font-size:1rem}
+  .proc-meta{font-size:.76rem; color:#6b6a63; margin-top:2px}
+  .proc-contenido{
+    white-space:pre-wrap; font-size:.87rem; line-height:1.55; margin-top:12px;
+    padding-top:12px; border-top:1px solid var(--line); color:#3a392f;
+  }
+  .proc-toggle{font-size:.8rem; color:#6b6a63}
+
   @media (max-width:640px){
     main{padding:14px}
     .modal{padding:20px}
@@ -327,6 +338,7 @@
     <button class="tab-btn" data-tab="kpi" onclick="cambiarTab('kpi')">📊 KPIs</button>
     <button class="tab-btn" data-tab="bitacora" onclick="cambiarTab('bitacora')">📝 Bitácora</button>
     <button class="tab-btn" data-tab="vencimientos" onclick="cambiarTab('vencimientos')">🗓️ Vencimientos</button>
+    <button class="tab-btn" data-tab="procedimientos" onclick="cambiarTab('procedimientos')">📚 Procedimientos</button>
     <button class="tab-btn hidden" data-tab="usuarios" id="tabBtnUsuarios" onclick="cambiarTab('usuarios')">👥 Usuarios</button>
   </nav>
 
@@ -463,6 +475,22 @@
         <button class="btn btn-primary" id="btnNuevoAgenda">+ Agregar</button>
       </div>
       <div class="kanban" id="kanbanBoard"></div>
+    </div>
+
+    <!-- -------- TAB: PROCEDIMIENTOS (manual por departamento) -------- -->
+    <div id="tabProcedimientos" class="hidden">
+      <div class="toolbar">
+        <div>
+          <h2>Procedimientos</h2>
+          <div class="sub" id="procSubLabel">Manual de procesos de tu departamento</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="procDeptFilter" class="hidden"></select>
+          <input type="text" id="procBuscar" placeholder="Buscar por título..." style="padding:8px 12px; border-radius:8px; border:1px solid var(--line); font-size:.85rem;">
+          <button class="btn btn-primary hidden" id="btnNuevoProcedimiento">+ Nuevo procedimiento</button>
+        </div>
+      </div>
+      <div id="procedimientosContent"></div>
     </div>
 
     <!-- -------- TAB: VENCIMIENTOS (calendario por departamento) -------- -->
@@ -650,6 +678,35 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnCancelUser">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveUser">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: nuevo/editar procedimiento ============ -->
+<div class="overlay hidden" id="procModalOverlay">
+  <div class="modal">
+    <h3 id="procModalTitle">Nuevo procedimiento</h3>
+    <input type="hidden" id="procId">
+    <div class="field">
+      <label>Título</label>
+      <input type="text" id="procTitulo" placeholder="Ej: Proceso de conciliación bancaria">
+    </div>
+    <div class="field">
+      <label>Departamento</label>
+      <select id="procDepartamento"></select>
+    </div>
+    <div class="field">
+      <label>Categoría (opcional)</label>
+      <input type="text" id="procCategoria" placeholder="Ej: Cobranzas, Cierre mensual, Onboarding...">
+    </div>
+    <div class="field">
+      <label>Procedimiento (pasos, detalle)</label>
+      <textarea id="procContenido" rows="10" placeholder="1. Ingresar al sistema...&#10;2. ...&#10;3. ..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelProc">Cancelar</button>
+      <button class="btn btn-danger hidden" id="btnDeleteProc">Borrar</button>
+      <button class="btn btn-primary" id="btnSaveProc">Guardar</button>
     </div>
   </div>
 </div>
@@ -944,11 +1001,13 @@ function cambiarTab(tab){
   document.getElementById('tabKpi').classList.toggle('hidden', tab!=='kpi');
   document.getElementById('tabBitacora').classList.toggle('hidden', tab!=='bitacora');
   document.getElementById('tabVencimientos').classList.toggle('hidden', tab!=='vencimientos');
+  document.getElementById('tabProcedimientos').classList.toggle('hidden', tab!=='procedimientos');
   document.getElementById('tabUsuarios').classList.toggle('hidden', tab!=='usuarios');
   if(tab==='miDia') cargarMiDia();
   if(tab==='kpi') cargarKpi();
   if(tab==='bitacora') cargarBitacora();
   if(tab==='vencimientos') cargarVencimientosTab();
+  if(tab==='procedimientos') cargarProcedimientosTab();
   if(tab==='usuarios') cargarUsuariosTab();
 }
 
@@ -2000,6 +2059,164 @@ document.getElementById('btnDeleteVenc').addEventListener('click', async ()=>{
   toast('Vencimiento eliminado');
   document.getElementById('vencModalOverlay').classList.add('hidden');
   await cargarVencimientosTab();
+});
+
+/* =========================================================
+   PROCEDIMIENTOS POR DEPARTAMENTO
+   (manual de procesos: cada depto ve el suyo, Gerencia ve todos)
+========================================================= */
+let procedimientosBase = [];
+let procSelectedDept = null;
+
+async function cargarProcedimientosTab(){
+  const puedeGestionar = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+  document.getElementById('btnNuevoProcedimiento').classList.toggle('hidden', !puedeGestionar);
+
+  const deptSel = document.getElementById('procDeptFilter');
+  if(currentUser.es_admin || currentUser.nivel===1){
+    deptSel.classList.remove('hidden');
+    deptSel.innerHTML = `<option value="">Todos los departamentos</option>` +
+      departamentos.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+    deptSel.value = procSelectedDept || '';
+    deptSel.onchange = ()=>{ procSelectedDept = deptSel.value || null; cargarProcedimientosTab(); };
+    document.getElementById('procSubLabel').textContent = 'Manual de procesos — todos los departamentos';
+  } else {
+    deptSel.classList.add('hidden');
+    const miDept = departamentos.find(d=>d.id===currentUser.departamento_id);
+    document.getElementById('procSubLabel').textContent = `Manual de procesos de ${miDept? miDept.icono+' '+miDept.nombre : 'tu departamento'}`;
+  }
+
+  let q = sb.from('procedimientos').select('*').order('titulo', { ascending: true });
+  if(currentUser.nivel!==1 && !currentUser.es_admin){
+    q = q.eq('departamento_id', currentUser.departamento_id);
+  } else if(procSelectedDept){
+    q = q.eq('departamento_id', procSelectedDept);
+  }
+  const { data, error } = await q;
+  if(error){ toast('Error al cargar procedimientos: '+error.message); return; }
+  procedimientosBase = data || [];
+  renderProcedimientos();
+}
+
+document.getElementById('procBuscar').addEventListener('input', renderProcedimientos);
+
+function renderProcedimientos(){
+  const texto = document.getElementById('procBuscar').value.trim().toLowerCase();
+  const lista = procedimientosBase.filter(p => !texto || p.titulo.toLowerCase().includes(texto) || (p.categoria||'').toLowerCase().includes(texto));
+
+  const cont = document.getElementById('procedimientosContent');
+  if(lista.length===0){
+    cont.innerHTML = `<div class="empty-state">Todavía no hay procedimientos cargados${document.getElementById('btnNuevoProcedimiento').classList.contains('hidden')?'.':'. Creá el primero con "+ Nuevo procedimiento".'}</div>`;
+    return;
+  }
+
+  const puedeGestionar = currentUser.es_admin || currentUser.nivel===1 || currentUser.nivel===2;
+  const verTodos = currentUser.es_admin || currentUser.nivel===1;
+
+  cont.innerHTML = lista.map(p=>{
+    const dept = departamentos.find(d=>d.id===p.departamento_id);
+    const puedeEditarEste = currentUser.es_admin || currentUser.nivel===1 || (currentUser.nivel===2 && p.departamento_id===currentUser.departamento_id);
+    const acciones = puedeEditarEste ? `
+      <div class="row-actions">
+        <button class="icon-btn" title="Editar" onclick="event.stopPropagation(); abrirProcModal('${p.id}')">✏️</button>
+      </div>` : '';
+    return `<div class="proc-card">
+      <div class="proc-head" onclick="toggleProcContenido('${p.id}')">
+        <div>
+          <div class="proc-titulo">${p.titulo}</div>
+          <div class="proc-meta">
+            ${verTodos && dept? dept.icono+' '+dept.nombre+' · ' : ''}
+            ${p.categoria ? '<span class="cat-chip">'+p.categoria+'</span> · ' : ''}
+            actualizado ${fmtDateLarga((p.actualizado_en||p.creado_en).slice(0,10))}
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          ${acciones}
+          <span class="proc-toggle" id="procToggle_${p.id}">▾ ver</span>
+        </div>
+      </div>
+      <div class="proc-contenido hidden" id="procContenido_${p.id}">${(p.contenido||'').replace(/</g,'&lt;')}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleProcContenido(id){
+  const el = document.getElementById('procContenido_'+id);
+  const tg = document.getElementById('procToggle_'+id);
+  const abierto = !el.classList.contains('hidden');
+  el.classList.toggle('hidden', abierto);
+  tg.textContent = abierto ? '▾ ver' : '▴ ocultar';
+}
+
+document.getElementById('btnNuevoProcedimiento').addEventListener('click', ()=>abrirProcModal(null));
+document.getElementById('btnCancelProc').addEventListener('click', ()=>{
+  document.getElementById('procModalOverlay').classList.add('hidden');
+});
+
+function abrirProcModal(procId){
+  const deptSel = document.getElementById('procDepartamento');
+  let deptsVisibles = departamentos;
+  if(currentUser.nivel===2 && !currentUser.es_admin){
+    deptsVisibles = departamentos.filter(d=>d.id===currentUser.departamento_id);
+  }
+  deptSel.innerHTML = deptsVisibles.map(d=>`<option value="${d.id}">${d.icono} ${d.nombre}</option>`).join('');
+
+  document.getElementById('btnDeleteProc').classList.toggle('hidden', !procId);
+
+  if(procId){
+    const p = procedimientosBase.find(x=>x.id===procId);
+    document.getElementById('procModalTitle').textContent = 'Editar procedimiento';
+    document.getElementById('procId').value = p.id;
+    document.getElementById('procTitulo').value = p.titulo;
+    deptSel.value = p.departamento_id;
+    document.getElementById('procCategoria').value = p.categoria || '';
+    document.getElementById('procContenido').value = p.contenido || '';
+  } else {
+    document.getElementById('procModalTitle').textContent = 'Nuevo procedimiento';
+    document.getElementById('procId').value = '';
+    document.getElementById('procTitulo').value = '';
+    if(currentUser.nivel===2 && !currentUser.es_admin) deptSel.value = currentUser.departamento_id;
+    document.getElementById('procCategoria').value = '';
+    document.getElementById('procContenido').value = '';
+  }
+  document.getElementById('procModalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('btnSaveProc').addEventListener('click', async ()=>{
+  const id = document.getElementById('procId').value;
+  const payload = {
+    titulo: document.getElementById('procTitulo').value.trim(),
+    departamento_id: document.getElementById('procDepartamento').value,
+    categoria: document.getElementById('procCategoria').value.trim() || null,
+    contenido: document.getElementById('procContenido').value.trim(),
+    actualizado_por: currentUser.id,
+    actualizado_en: new Date().toISOString(),
+  };
+  if(!payload.titulo){ toast('Poné un título.'); return; }
+  if(!payload.contenido){ toast('Cargá el contenido del procedimiento.'); return; }
+
+  let error;
+  if(id){
+    ({ error } = await sb.from('procedimientos').update(payload).eq('id', id));
+  } else {
+    payload.creado_por = currentUser.id;
+    ({ error } = await sb.from('procedimientos').insert(payload));
+  }
+  if(error){ toast('Error al guardar: '+error.message); return; }
+  toast(id ? 'Procedimiento actualizado' : 'Procedimiento creado');
+  document.getElementById('procModalOverlay').classList.add('hidden');
+  await cargarProcedimientosTab();
+});
+
+document.getElementById('btnDeleteProc').addEventListener('click', async ()=>{
+  const id = document.getElementById('procId').value;
+  if(!id) return;
+  if(!confirm('¿Borrar este procedimiento?')) return;
+  const { error } = await sb.from('procedimientos').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message); return; }
+  toast('Procedimiento eliminado');
+  document.getElementById('procModalOverlay').classList.add('hidden');
+  await cargarProcedimientosTab();
 });
 
 /* =========================================================
