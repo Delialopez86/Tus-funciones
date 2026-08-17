@@ -273,6 +273,11 @@
   .kcard.hecho{opacity:.55}
   .kcard.hecho .ktitle{text-decoration:line-through}
   .kcard.sugerido{border-left:3px solid var(--amber); cursor:pointer}
+  .kcard.propio{cursor:grab; border-left:3px solid var(--accent)}
+  .kcard.propio.dragging{opacity:.35}
+  .kcard .khora{font-weight:700; color:var(--accent); margin-right:4px}
+  .kcards-drop{min-height:12px}
+  .kcards-drop.drag-over{background:#e5e3da; border-radius:8px}
   .kcard .ktitle{font-weight:600; margin-bottom:2px}
   .kcard .kmeta{font-size:.74rem; color:#6b6a63}
   .kcard .kactions{display:flex; gap:6px; margin-top:8px}
@@ -470,9 +475,31 @@
       <div class="toolbar">
         <div>
           <h2>Mi Día</h2>
-          <div class="sub">Organizá tus prioridades: reuniones, pendientes propios, y lo urgente de hoy en un solo lugar</div>
+          <div class="sub" id="miDiaSubLabel">Organizá tus prioridades: reuniones, pendientes propios, y lo urgente de hoy</div>
         </div>
-        <button class="btn btn-primary" id="btnNuevoAgenda">+ Agregar</button>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="range-nav">
+            <button class="nav-btn" id="btnMiDiaPrev" title="Día anterior">‹</button>
+            <input type="date" id="miDiaFechaInput" style="padding:7px 10px; border-radius:8px; border:1px solid var(--line); font-size:.85rem;">
+            <button class="nav-btn" id="btnMiDiaNext" title="Día siguiente">›</button>
+            <button class="btn-hoy" id="btnMiDiaHoy">Hoy</button>
+          </div>
+          <button class="btn btn-primary" id="btnNuevoAgenda">+ Agregar</button>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <select id="agendaFiltroTipo">
+          <option value="">Todo tipo</option>
+          <option value="Reunión">📅 Reunión</option>
+          <option value="Tarea propia">✅ Tarea propia</option>
+          <option value="Recordatorio">🔔 Recordatorio</option>
+          <option value="Otro">📌 Otro</option>
+        </select>
+        <select id="agendaFiltroEstado">
+          <option value="">Pendientes y hechos</option>
+          <option value="pendiente">Solo pendientes</option>
+          <option value="hecho">Solo hechos</option>
+        </select>
       </div>
       <div class="kanban" id="kanbanBoard"></div>
     </div>
@@ -714,7 +741,8 @@
 <!-- ============ MODAL: nuevo item de Mi Día ============ -->
 <div class="overlay hidden" id="agendaModalOverlay">
   <div class="modal">
-    <h3>Agregar a Mi Día</h3>
+    <h3 id="agendaModalTitle">Agregar a Mi Día</h3>
+    <input type="hidden" id="agendaId">
     <div class="field">
       <label>Título</label>
       <input type="text" id="agendaTitulo" placeholder="Ej: Reunión con proveedores">
@@ -738,10 +766,11 @@
     </div>
     <div class="field">
       <label>Hora (opcional)</label>
-      <input type="text" id="agendaHora" placeholder="Ej: 14:30">
+      <input type="time" id="agendaHora">
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnCancelAgenda">Cancelar</button>
+      <button class="btn btn-danger hidden" id="btnDeleteAgendaModal">Borrar</button>
       <button class="btn btn-primary" id="btnSaveAgenda">Guardar</button>
     </div>
   </div>
@@ -1697,46 +1726,115 @@ function renderKpi(tareasKpi, instKpi, desde, hasta){
 
 /* =========================================================
    MI DÍA — planner visual de prioridades (tipo kanban)
-   Combina: agenda personal propia + lo urgente de la Matriz
-   y de Vencimientos, para organizar el día de un vistazo.
+   Combina: agenda personal propia (editable, con horario, y
+   arrastrable entre columnas) + lo urgente de la Matriz y de
+   Vencimientos (solo cuando se está viendo el día de hoy).
 ========================================================= */
 let agendaPersonalItems = [];
+let miDiaFecha = todayStr();
+let miDiaTareasUrgentes = [];
+let miDiaVencidos = [];
+let miDiaProximosVenc = [];
+let dragItemId = null;
 
+/* ---------- navegación de fecha ---------- */
+document.getElementById('miDiaFechaInput').addEventListener('change', function(){
+  miDiaFecha = this.value || todayStr();
+  cargarMiDia();
+});
+document.getElementById('btnMiDiaPrev').addEventListener('click', ()=>{
+  const d = new Date(miDiaFecha+'T00:00:00'); d.setDate(d.getDate()-1);
+  miDiaFecha = toISO(d); cargarMiDia();
+});
+document.getElementById('btnMiDiaNext').addEventListener('click', ()=>{
+  const d = new Date(miDiaFecha+'T00:00:00'); d.setDate(d.getDate()+1);
+  miDiaFecha = toISO(d); cargarMiDia();
+});
+document.getElementById('btnMiDiaHoy').addEventListener('click', ()=>{
+  miDiaFecha = todayStr(); cargarMiDia();
+});
+
+/* ---------- filtros ---------- */
+document.getElementById('agendaFiltroTipo').addEventListener('change', ()=>renderKanban());
+document.getElementById('agendaFiltroEstado').addEventListener('change', ()=>renderKanban());
+
+/* ---------- alta / edición ---------- */
 document.getElementById('btnNuevoAgenda').addEventListener('click', ()=>{
+  document.getElementById('agendaModalTitle').textContent = 'Agregar a Mi Día';
+  document.getElementById('agendaId').value = '';
   document.getElementById('agendaTitulo').value = '';
   document.getElementById('agendaTipo').value = 'Reunión';
   document.getElementById('agendaPrioridad').value = 'Media';
   document.getElementById('agendaHora').value = '';
+  document.getElementById('btnDeleteAgendaModal').classList.add('hidden');
   document.getElementById('agendaModalOverlay').classList.remove('hidden');
 });
 document.getElementById('btnCancelAgenda').addEventListener('click', ()=>{
   document.getElementById('agendaModalOverlay').classList.add('hidden');
 });
+
+function editarAgenda(id){
+  const item = agendaPersonalItems.find(x=>x.id===id);
+  if(!item) return;
+  document.getElementById('agendaModalTitle').textContent = 'Editar';
+  document.getElementById('agendaId').value = item.id;
+  document.getElementById('agendaTitulo').value = item.titulo;
+  document.getElementById('agendaTipo').value = item.tipo;
+  document.getElementById('agendaPrioridad').value = item.prioridad;
+  document.getElementById('agendaHora').value = item.hora || '';
+  document.getElementById('btnDeleteAgendaModal').classList.remove('hidden');
+  document.getElementById('agendaModalOverlay').classList.remove('hidden');
+}
+
 document.getElementById('btnSaveAgenda').addEventListener('click', async ()=>{
+  const id = document.getElementById('agendaId').value;
   const titulo = document.getElementById('agendaTitulo').value.trim();
   if(!titulo){ toast('Poné un título.'); return; }
-  const payload = {
-    usuario_id: currentUser.id,
-    titulo,
-    tipo: document.getElementById('agendaTipo').value,
-    prioridad: document.getElementById('agendaPrioridad').value,
-    hora: document.getElementById('agendaHora').value.trim() || null,
-    fecha: todayStr(),
-  };
-  const { error } = await sb.from('agenda_personal').insert(payload);
-  if(error){ toast('Error al guardar: '+error.message); return; }
+  const prioridad = document.getElementById('agendaPrioridad').value;
+
+  if(id){
+    const payload = {
+      titulo,
+      tipo: document.getElementById('agendaTipo').value,
+      prioridad,
+      hora: document.getElementById('agendaHora').value || null,
+    };
+    const { error } = await sb.from('agenda_personal').update(payload).eq('id', id);
+    if(error){ toast('Error al guardar: '+error.message); return; }
+    toast('Actualizado ✓');
+  } else {
+    const enColumna = agendaPersonalItems.filter(i=>i.prioridad===prioridad);
+    const maxOrden = enColumna.length ? Math.max(...enColumna.map(i=>Number(i.orden)||0)) : 0;
+    const payload = {
+      usuario_id: currentUser.id,
+      titulo,
+      tipo: document.getElementById('agendaTipo').value,
+      prioridad,
+      hora: document.getElementById('agendaHora').value || null,
+      fecha: miDiaFecha,
+      orden: enColumna.length ? maxOrden + 1 : 0,
+    };
+    const { error } = await sb.from('agenda_personal').insert(payload);
+    if(error){ toast('Error al guardar: '+error.message); return; }
+    toast('Agregado a Mi Día ✓');
+  }
   document.getElementById('agendaModalOverlay').classList.add('hidden');
-  toast('Agregado a Mi Día ✓');
+  await cargarMiDia();
+});
+
+document.getElementById('btnDeleteAgendaModal').addEventListener('click', async ()=>{
+  const id = document.getElementById('agendaId').value;
+  if(!id) return;
+  if(!confirm('¿Borrar este ítem de Mi Día?')) return;
+  const { error } = await sb.from('agenda_personal').delete().eq('id', id);
+  if(error){ toast('Error: '+error.message); return; }
+  document.getElementById('agendaModalOverlay').classList.add('hidden');
+  toast('Eliminado');
   await cargarMiDia();
 });
 
 async function toggleAgendaHecho(id, actual){
   const { error } = await sb.from('agenda_personal').update({ completado: !actual }).eq('id', id);
-  if(error){ toast('Error: '+error.message); return; }
-  await cargarMiDia();
-}
-async function moverPrioridadAgenda(id, nueva){
-  const { error } = await sb.from('agenda_personal').update({ prioridad: nueva }).eq('id', id);
   if(error){ toast('Error: '+error.message); return; }
   await cargarMiDia();
 }
@@ -1747,43 +1845,53 @@ async function borrarAgenda(id){
   await cargarMiDia();
 }
 
+/* ---------- carga de datos ---------- */
 async function cargarMiDia(){
+  document.getElementById('miDiaFechaInput').value = miDiaFecha;
   const hoy = todayStr();
-  const en7 = new Date(); en7.setDate(en7.getDate()+7);
-  const en7str = toISO(en7);
+  const esHoy = miDiaFecha === hoy;
+  document.getElementById('miDiaSubLabel').textContent = esHoy
+    ? 'Organizá tus prioridades: reuniones, pendientes propios, y lo urgente de hoy'
+    : `Planificando: ${fmtDateLarga(miDiaFecha)}`;
 
-  // 1) agenda personal propia de hoy
+  // 1) agenda personal propia del día que se está viendo
   const { data: ag } = await sb.from('agenda_personal')
-    .select('*').eq('fecha', hoy).order('creado_en', { ascending: true });
+    .select('*').eq('fecha', miDiaFecha).order('orden', { ascending: true });
   agendaPersonalItems = ag || [];
 
-  // 2) tareas pendientes de hoy (según lo que ya ve este usuario por RLS)
-  const { data: inst } = await sb.from('tarea_instancias')
-    .select('id, estado, fecha, tarea_id, tareas(titulo, departamento_id)')
-    .eq('fecha', hoy).neq('estado', 'REALIZADO').neq('estado','NO_APLICA');
-  const tareasUrgentes = (inst || []).filter(i=>i.tareas).map(i=>({
-    titulo: i.tareas.titulo, dept: departamentos.find(d=>d.id===i.tareas.departamento_id)
-  }));
+  // 2) y 3) lo urgente de Matriz/Vencimientos SOLO si se está viendo hoy
+  miDiaTareasUrgentes = []; miDiaVencidos = []; miDiaProximosVenc = [];
+  if(esHoy){
+    const en7 = new Date(); en7.setDate(en7.getDate()+7);
+    const en7str = toISO(en7);
 
-  // 3) vencimientos vencidos / próximos 7 días
-  const { data: venc } = await sb.from('vencimientos')
-    .select('titulo, fecha_vencimiento, departamento_id, estado')
-    .eq('estado','PENDIENTE').not('fecha_vencimiento','is',null).lte('fecha_vencimiento', en7str);
-  const vencidos = (venc||[]).filter(v=>v.fecha_vencimiento<hoy);
-  const proximosVenc = (venc||[]).filter(v=>v.fecha_vencimiento>=hoy);
+    const { data: inst } = await sb.from('tarea_instancias')
+      .select('id, estado, fecha, tarea_id, tareas(titulo, departamento_id)')
+      .eq('fecha', hoy).neq('estado', 'REALIZADO').neq('estado','NO_APLICA');
+    miDiaTareasUrgentes = (inst || []).filter(i=>i.tareas).map(i=>({
+      titulo: i.tareas.titulo, dept: departamentos.find(d=>d.id===i.tareas.departamento_id)
+    }));
 
-  renderKanban(tareasUrgentes, vencidos, proximosVenc);
+    const { data: venc } = await sb.from('vencimientos')
+      .select('titulo, fecha_vencimiento, departamento_id, estado')
+      .eq('estado','PENDIENTE').not('fecha_vencimiento','is',null).lte('fecha_vencimiento', en7str);
+    miDiaVencidos = (venc||[]).filter(v=>v.fecha_vencimiento<hoy);
+    miDiaProximosVenc = (venc||[]).filter(v=>v.fecha_vencimiento>=hoy);
+  }
+
+  renderKanban();
 }
 
+/* ---------- render ---------- */
 function kcardPersonal(item){
   const ICONO = { 'Reunión':'📅','Tarea propia':'✅','Recordatorio':'🔔','Otro':'📌' };
-  const otras = ['Alta','Media','Baja'].filter(p=>p!==item.prioridad);
-  return `<div class="kcard${item.completado?' hecho':''}">
-    <div class="ktitle">${ICONO[item.tipo]||'📌'} ${item.titulo}</div>
-    <div class="kmeta">${item.hora? item.hora+' · ':''}${item.tipo}</div>
+  return `<div class="kcard propio${item.completado?' hecho':''}" draggable="true" data-id="${item.id}"
+      ondragstart="onDragStart(event,'${item.id}')" ondragend="onDragEnd(event)">
+    <div class="ktitle">${item.hora?`<span class="khora">${item.hora}</span>`:''}${ICONO[item.tipo]||'📌'} ${item.titulo}</div>
+    <div class="kmeta">${item.tipo}</div>
     <div class="kactions">
       <button onclick="toggleAgendaHecho('${item.id}', ${item.completado})">${item.completado?'↩️ Deshacer':'✓ Hecho'}</button>
-      ${otras.map(p=>`<button onclick="moverPrioridadAgenda('${item.id}','${p}')">→ ${p}</button>`).join('')}
+      <button onclick="editarAgenda('${item.id}')">✏️ Editar</button>
       <button onclick="borrarAgenda('${item.id}')">🗑️</button>
     </div>
   </div>`;
@@ -1795,30 +1903,99 @@ function kcardSugerido(titulo, meta, destino){
   </div>`;
 }
 
-function renderKanban(tareasUrgentes, vencidos, proximosVenc){
-  const propiosAlta = agendaPersonalItems.filter(i=>i.prioridad==='Alta');
-  const propiosMedia = agendaPersonalItems.filter(i=>i.prioridad==='Media');
-  const propiosBaja = agendaPersonalItems.filter(i=>i.prioridad==='Baja');
+function renderKanban(){
+  const filtroTipo = document.getElementById('agendaFiltroTipo').value;
+  const filtroEstado = document.getElementById('agendaFiltroEstado').value;
+  const itemsFiltrados = agendaPersonalItems.filter(i=>{
+    if(filtroTipo && i.tipo !== filtroTipo) return false;
+    if(filtroEstado === 'pendiente' && i.completado) return false;
+    if(filtroEstado === 'hecho' && !i.completado) return false;
+    return true;
+  });
+
+  const propiosAlta = itemsFiltrados.filter(i=>i.prioridad==='Alta');
+  const propiosMedia = itemsFiltrados.filter(i=>i.prioridad==='Media');
+  const propiosBaja = itemsFiltrados.filter(i=>i.prioridad==='Baja');
 
   const sugAlta = [
-    ...vencidos.slice(0,6).map(v=>kcardSugerido(`⚠️ ${v.titulo}`, `Vencido · ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos')),
-    ...tareasUrgentes.slice(0,6).map(t=>kcardSugerido(`📋 ${t.titulo}`, `${t.dept?t.dept.icono+' '+t.dept.nombre:''} · pendiente hoy`, 'matriz')),
+    ...miDiaVencidos.slice(0,6).map(v=>kcardSugerido(`⚠️ ${v.titulo}`, `Vencido · ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos')),
+    ...miDiaTareasUrgentes.slice(0,6).map(t=>kcardSugerido(`📋 ${t.titulo}`, `${t.dept?t.dept.icono+' '+t.dept.nombre:''} · pendiente hoy`, 'matriz')),
   ];
-  const sugMedia = proximosVenc.slice(0,6).map(v=>kcardSugerido(`🔔 ${v.titulo}`, `Vence ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos'));
+  const sugMedia = miDiaProximosVenc.slice(0,6).map(v=>kcardSugerido(`🔔 ${v.titulo}`, `Vence ${fmtDateLarga(v.fecha_vencimiento)}`, 'vencimientos'));
 
-  const col = (clase, titulo, propios, sugeridos) => `
+  const col = (prioridad, clase, titulo, propios, sugeridos) => `
     <div class="kanban-col ${clase}">
       <h3>${titulo} <span class="kcount">${propios.length + sugeridos.length}</span></h3>
       ${sugeridos.join('')}
-      ${propios.map(kcardPersonal).join('')}
+      <div class="kcards-drop" id="propiosList_${prioridad}"
+        ondragover="onColDragOver(event,'${prioridad}')" ondrop="onColDrop(event,'${prioridad}')">
+        ${propios.map(kcardPersonal).join('')}
+      </div>
       ${(propios.length + sugeridos.length)===0 ? '<div class="kempty">Nada por acá — 🎉</div>' : ''}
     </div>`;
 
   document.getElementById('kanbanBoard').innerHTML =
-    col('alta', '🔴 Alta', propiosAlta, sugAlta) +
-    col('media', '🟡 Media', propiosMedia, sugMedia) +
-    col('baja', '🟢 Baja', propiosBaja, []);
+    col('Alta', 'alta', '🔴 Alta', propiosAlta, sugAlta) +
+    col('Media', 'media', '🟡 Media', propiosMedia, sugMedia) +
+    col('Baja', 'baja', '🟢 Baja', propiosBaja, []);
 }
+
+/* ---------- drag and drop ---------- */
+function onDragStart(e, id){
+  dragItemId = id;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', id);
+}
+function onDragEnd(e){
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.kcards-drop').forEach(el=>el.classList.remove('drag-over'));
+}
+function getDragAfterElement(container, y){
+  const els = [...container.querySelectorAll('.kcard.propio:not(.dragging)')];
+  return els.reduce((closest, child)=>{
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height/2;
+    if(offset < 0 && offset > closest.offset){ return { offset, element: child }; }
+    return closest;
+  }, { offset: -Infinity, element: null }).element;
+}
+function onColDragOver(e, prioridad){
+  e.preventDefault();
+  const container = document.getElementById('propiosList_'+prioridad);
+  container.classList.add('drag-over');
+  const dragging = document.querySelector('.kcard.propio.dragging');
+  if(!dragging) return;
+  const afterEl = getDragAfterElement(container, e.clientY);
+  if(afterEl==null) container.appendChild(dragging);
+  else container.insertBefore(dragging, afterEl);
+}
+async function onColDrop(e, prioridad){
+  e.preventDefault();
+  const container = document.getElementById('propiosList_'+prioridad);
+  container.classList.remove('drag-over');
+  const id = dragItemId || e.dataTransfer.getData('text/plain');
+  if(!id) return;
+
+  const siblings = [...container.querySelectorAll('.kcard.propio')];
+  const idx = siblings.findIndex(el=>el.dataset.id===id);
+  const prevEl = idx>0 ? siblings[idx-1] : null;
+  const nextEl = idx<siblings.length-1 ? siblings[idx+1] : null;
+  const prevItem = prevEl ? agendaPersonalItems.find(x=>x.id===prevEl.dataset.id) : null;
+  const nextItem = nextEl ? agendaPersonalItems.find(x=>x.id===nextEl.dataset.id) : null;
+
+  let nuevoOrden;
+  if(prevItem && nextItem) nuevoOrden = (Number(prevItem.orden)+Number(nextItem.orden))/2;
+  else if(prevItem) nuevoOrden = Number(prevItem.orden)+1;
+  else if(nextItem) nuevoOrden = Number(nextItem.orden)-1;
+  else nuevoOrden = 0;
+
+  const { error } = await sb.from('agenda_personal').update({ prioridad, orden: nuevoOrden }).eq('id', id);
+  if(error){ toast('Error al mover: '+error.message); }
+  dragItemId = null;
+  await cargarMiDia();
+}
+
 
 /* =========================================================
    CALENDARIO DE VENCIMIENTOS POR DEPARTAMENTO
